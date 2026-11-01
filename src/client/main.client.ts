@@ -5,6 +5,9 @@ import { VisualEffects } from "./effects";
 const player = Players.LocalPlayer;
 const playerGui = player.WaitForChild("PlayerGui") as PlayerGui;
 
+// Estado local de pausa
+let isClientPaused = false;
+
 // 1. HUD de EXP y Nivel
 const hudScreen = new Instance("ScreenGui");
 hudScreen.Name = "SurvivorHUD";
@@ -90,22 +93,29 @@ uiLayout.VerticalAlignment = Enum.VerticalAlignment.Center;
 uiLayout.Padding = new UDim(0, 25);
 uiLayout.Parent = cardsContainer;
 
+let savedWalkSpeed = 16;
+
 function showLevelUpModal() {
+	isClientPaused = true;
 	levelUpGui.Enabled = true;
 
-	// Limpiar cartas previas
+	// Congelar movimiento del personaje del jugador
+	const hum = player.Character?.FindFirstChildOfClass("Humanoid");
+	if (hum) {
+		savedWalkSpeed = hum.WalkSpeed > 0 ? hum.WalkSpeed : savedWalkSpeed;
+		hum.WalkSpeed = 0;
+	}
+
 	for (const child of cardsContainer.GetChildren()) {
 		if (child.IsA("GuiButton")) {
 			child.Destroy();
 		}
 	}
 
-	// Obtener inventario actual
 	const inventory = player.FindFirstChild("Inventory") as Folder;
 	const boomerangLvl = (inventory?.FindFirstChild("void_boomerang") as IntValue)?.Value ?? 1;
 	const plasmaLvl = (inventory?.FindFirstChild("plasma_blaster") as IntValue)?.Value ?? 0;
 
-	// 3 Opciones de cartas
 	const options = [
 		{
 			id: "void_boomerang",
@@ -202,6 +212,14 @@ function showLevelUpModal() {
 			}
 			selectUpgradeEvent?.FireServer(opt.id);
 			levelUpGui.Enabled = false;
+			isClientPaused = false;
+
+			// Restaurar movimiento del jugador
+			const currentHum = player.Character?.FindFirstChildOfClass("Humanoid");
+			if (currentHum) {
+				const extraSpeed = opt.id === "speed_boost" ? 3 : 0;
+				currentHum.WalkSpeed = savedWalkSpeed + extraSpeed;
+			}
 		});
 	}
 }
@@ -246,14 +264,21 @@ task.spawn(() => {
 	}
 });
 
-// 6. Armas: Búmeran del Vacío
+// 6. Armas: Búmeran del Vacío (respeta la pausa)
 task.spawn(() => {
 	while (true) {
+		if (isClientPaused) {
+			task.wait(0.2);
+			continue;
+		}
+
 		const inventory = player.FindFirstChild("Inventory") as Folder;
 		const boomerangLvl = (inventory?.FindFirstChild("void_boomerang") as IntValue)?.Value ?? 1;
 		const boomerangDef = WEAPONS.void_boomerang.levels[math.min(boomerangLvl, WEAPONS.void_boomerang.levels.size()) - 1];
 
 		task.wait(boomerangDef.cooldown);
+
+		if (isClientPaused) continue;
 
 		const character = player.Character;
 		const rootPart = character?.FindFirstChild("HumanoidRootPart") as BasePart;
@@ -311,6 +336,8 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 	const hitCooldowns = new Map<Instance, number>();
 
 	const connection = RunService.Heartbeat.Connect((dt) => {
+		if (isClientPaused) return;
+
 		blade.Orientation = blade.Orientation.add(new Vector3(0, 1600 * dt, 0));
 		const rootPart = player.Character?.FindFirstChild("HumanoidRootPart") as BasePart;
 
@@ -370,9 +397,14 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 	Debris.AddItem(blade, 4);
 }
 
-// 7. Armas: Bláster de Plasma (Desbloqueable)
+// 7. Armas: Bláster de Plasma (Desbloqueable, respeta la pausa)
 task.spawn(() => {
 	while (true) {
+		if (isClientPaused) {
+			task.wait(0.2);
+			continue;
+		}
+
 		const inventory = player.FindFirstChild("Inventory") as Folder;
 		const plasmaLvl = (inventory?.FindFirstChild("plasma_blaster") as IntValue)?.Value ?? 0;
 
@@ -383,6 +415,8 @@ task.spawn(() => {
 
 		const plasmaDef = WEAPONS.plasma_blaster.levels[math.min(plasmaLvl, WEAPONS.plasma_blaster.levels.size()) - 1];
 		task.wait(plasmaDef.cooldown);
+
+		if (isClientPaused) continue;
 
 		const character = player.Character;
 		const rootPart = character?.FindFirstChild("HumanoidRootPart") as BasePart;
@@ -415,7 +449,7 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 	orb.Name = "PlasmaOrb";
 	orb.Shape = Enum.PartType.Ball;
 	orb.Size = new Vector3(1.4, 1.4, 1.4);
-	orb.Color = new Color3(0.85, 0.2, 0.95); // Magenta brillante
+	orb.Color = new Color3(0.85, 0.2, 0.95);
 	orb.Material = Enum.Material.Neon;
 	orb.CanCollide = false;
 	orb.Anchored = true;
@@ -430,6 +464,8 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 
 	let alive = true;
 	const conn = RunService.Heartbeat.Connect((dt) => {
+		if (isClientPaused) return;
+
 		if (!alive || !targetEnemy || !targetEnemy.Parent) {
 			conn.Disconnect();
 			orb.Destroy();
@@ -458,8 +494,10 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 	Debris.AddItem(orb, 2.5);
 }
 
-// 8. Loop de recolección/imantación de gemas hacia el jugador
+// 8. Loop de recolección/imantación de gemas hacia el jugador (respeta la pausa)
 RunService.Heartbeat.Connect((dt) => {
+	if (isClientPaused) return;
+
 	const character = player.Character;
 	const rootPart = character?.FindFirstChild("HumanoidRootPart") as BasePart;
 	if (!rootPart) return;

@@ -10,6 +10,8 @@ local WEAPONS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "w
 local VisualEffects = TS.import(script, script.Parent, "effects").VisualEffects
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+-- Estado local de pausa
+local isClientPaused = false
 -- 1. HUD de EXP y Nivel
 local hudScreen = Instance.new("ScreenGui")
 hudScreen.Name = "SurvivorHUD"
@@ -83,15 +85,25 @@ uiLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 uiLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 uiLayout.Padding = UDim.new(0, 25)
 uiLayout.Parent = cardsContainer
+local savedWalkSpeed = 16
 local function showLevelUpModal()
+	isClientPaused = true
 	levelUpGui.Enabled = true
-	-- Limpiar cartas previas
+	-- Congelar movimiento del personaje del jugador
+	local _hum = player.Character
+	if _hum ~= nil then
+		_hum = _hum:FindFirstChildOfClass("Humanoid")
+	end
+	local hum = _hum
+	if hum then
+		savedWalkSpeed = if hum.WalkSpeed > 0 then hum.WalkSpeed else savedWalkSpeed
+		hum.WalkSpeed = 0
+	end
 	for _, child in cardsContainer:GetChildren() do
 		if child:IsA("GuiButton") then
 			child:Destroy()
 		end
 	end
-	-- Obtener inventario actual
 	local inventory = player:FindFirstChild("Inventory")
 	local _result = inventory
 	if _result ~= nil then
@@ -119,7 +131,6 @@ local function showLevelUpModal()
 		_condition_1 = 0
 	end
 	local plasmaLvl = _condition_1
-	-- 3 Opciones de cartas
 	local options = { {
 		id = "void_boomerang",
 		title = "Búmeran del Vacío",
@@ -208,6 +219,17 @@ local function showLevelUpModal()
 				_result_4:FireServer(opt.id)
 			end
 			levelUpGui.Enabled = false
+			isClientPaused = false
+			-- Restaurar movimiento del jugador
+			local _currentHum = player.Character
+			if _currentHum ~= nil then
+				_currentHum = _currentHum:FindFirstChildOfClass("Humanoid")
+			end
+			local currentHum = _currentHum
+			if currentHum then
+				local extraSpeed = if opt.id == "speed_boost" then 3 else 0
+				currentHum.WalkSpeed = savedWalkSpeed + extraSpeed
+			end
 		end)
 	end
 end
@@ -259,10 +281,14 @@ task.spawn(function()
 		updateUi()
 	end
 end)
--- 6. Armas: Búmeran del Vacío
+-- 6. Armas: Búmeran del Vacío (respeta la pausa)
 local fireBoomerang
 task.spawn(function()
 	while true do
+		if isClientPaused then
+			task.wait(0.2)
+			continue
+		end
 		local inventory = player:FindFirstChild("Inventory")
 		local _result = inventory
 		if _result ~= nil then
@@ -279,6 +305,9 @@ task.spawn(function()
 		local boomerangLvl = _condition
 		local boomerangDef = WEAPONS.void_boomerang.levels[math.min(boomerangLvl, #WEAPONS.void_boomerang.levels)]
 		task.wait(boomerangDef.cooldown)
+		if isClientPaused then
+			continue
+		end
 		local character = player.Character
 		local _result_2 = character
 		if _result_2 ~= nil then
@@ -361,6 +390,9 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 	local hitCooldowns = {}
 	local connection
 	connection = RunService.Heartbeat:Connect(function(dt)
+		if isClientPaused then
+			return nil
+		end
 		local _orientation = blade.Orientation
 		local _vector3_1 = Vector3.new(0, 1600 * dt, 0)
 		blade.Orientation = _orientation + _vector3_1
@@ -454,10 +486,14 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 	end)
 	Debris:AddItem(blade, 4)
 end
--- 7. Armas: Bláster de Plasma (Desbloqueable)
+-- 7. Armas: Bláster de Plasma (Desbloqueable, respeta la pausa)
 local firePlasmaOrb
 task.spawn(function()
 	while true do
+		if isClientPaused then
+			task.wait(0.2)
+			continue
+		end
 		local inventory = player:FindFirstChild("Inventory")
 		local _result = inventory
 		if _result ~= nil then
@@ -478,6 +514,9 @@ task.spawn(function()
 		end
 		local plasmaDef = WEAPONS.plasma_blaster.levels[math.min(plasmaLvl, #WEAPONS.plasma_blaster.levels)]
 		task.wait(plasmaDef.cooldown)
+		if isClientPaused then
+			continue
+		end
 		local character = player.Character
 		local _result_2 = character
 		if _result_2 ~= nil then
@@ -538,6 +577,9 @@ function firePlasmaOrb(startPos, targetEnemy, damage, speed)
 	local alive = true
 	local conn
 	conn = RunService.Heartbeat:Connect(function(dt)
+		if isClientPaused then
+			return nil
+		end
 		if not alive or not targetEnemy or not targetEnemy.Parent then
 			conn:Disconnect()
 			orb:Destroy()
@@ -572,8 +614,11 @@ function firePlasmaOrb(startPos, targetEnemy, damage, speed)
 	end)
 	Debris:AddItem(orb, 2.5)
 end
--- 8. Loop de recolección/imantación de gemas hacia el jugador
+-- 8. Loop de recolección/imantación de gemas hacia el jugador (respeta la pausa)
 RunService.Heartbeat:Connect(function(dt)
+	if isClientPaused then
+		return nil
+	end
 	local character = player.Character
 	local _result = character
 	if _result ~= nil then

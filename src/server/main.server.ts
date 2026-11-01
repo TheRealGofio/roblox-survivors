@@ -3,6 +3,9 @@ import { WEAPONS } from "shared/weapons";
 
 print("[r-survivors] Servidor inicializado con éxito.");
 
+// Estado global de juego (pausa por level up)
+let isGamePaused = false;
+
 // 1. Crear el suelo de la arena física (Baseplate) si no existe
 let baseplate = Workspace.FindFirstChild("Baseplate") as BasePart;
 if (!baseplate) {
@@ -105,6 +108,8 @@ function spawnExpGem(position: Vector3, expValue = 10) {
 
 // 5. Manejo del daño a enemigos recibido desde el cliente
 damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDirArg) => {
+	if (isGamePaused) return;
+
 	const enemy = enemyArg as Instance;
 	const damage = typeOf(damageArg) === "number" ? (damageArg as number) : 10;
 	const knockbackDir = knockbackDirArg as Vector3 | undefined;
@@ -146,6 +151,8 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 
 // 6. Manejo de recolección de gemas y Level Up
 collectGemEvent.OnServerEvent.Connect((player, gemArg) => {
+	if (isGamePaused) return;
+
 	const gem = gemArg as Instance;
 	if (gem && gem.IsDescendantOf(dropsFolder) && gem.IsA("BasePart")) {
 		const exp = (gem.GetAttribute("ExpValue") as number) ?? 10;
@@ -161,8 +168,17 @@ collectGemEvent.OnServerEvent.Connect((player, gemArg) => {
 				if (expStat.Value >= nextLevelReq) {
 					expStat.Value -= nextLevelReq;
 					levelStat.Value += 1;
-					print(`[r-survivors] ¡${player.Name} alcanzó el Nivel ${levelStat.Value}!`);
-					// Notificar al cliente para mostrar las 3 cartas de elección
+					print(`[r-survivors] ¡${player.Name} alcanzó el Nivel ${levelStat.Value}! Pausando juego...`);
+
+					// PAUSAR JUEGO
+					isGamePaused = true;
+					for (const enemy of enemiesFolder.GetChildren()) {
+						if (enemy.IsA("BasePart")) {
+							const vel = enemy.FindFirstChildOfClass("BodyVelocity");
+							if (vel) vel.Velocity = new Vector3(0, 0, 0);
+						}
+					}
+
 					levelUpEvent.FireClient(player, levelStat.Value);
 				}
 			}
@@ -198,7 +214,7 @@ Players.PlayerAdded.Connect((plr) => {
 
 	const plasmaLvl = new Instance("IntValue");
 	plasmaLvl.Name = "plasma_blaster";
-	plasmaLvl.Value = 0; // Bloqueado al inicio, desbloqueable en level up
+	plasmaLvl.Value = 0;
 	plasmaLvl.Parent = inventory;
 
 	const maxHpBonus = new Instance("NumberValue");
@@ -212,45 +228,51 @@ Players.PlayerAdded.Connect((plr) => {
 	moveSpeedBonus.Parent = inventory;
 });
 
-// 8. Manejo de elección de mejoras
+// 8. Manejo de elección de mejoras y REANUDACIÓN del juego
 selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 	const upgradeId = upgradeIdArg as string;
 	const inventory = player.FindFirstChild("Inventory") as Folder;
-	if (!inventory) return;
-
-	if (upgradeId === "void_boomerang") {
-		const val = inventory.FindFirstChild("void_boomerang") as IntValue;
-		if (val) {
-			val.Value += 1;
-			print(`[Upgrade] ${player.Name} subió Búmeran a Nivel ${val.Value}`);
-		}
-	} else if (upgradeId === "plasma_blaster") {
-		const val = inventory.FindFirstChild("plasma_blaster") as IntValue;
-		if (val) {
-			val.Value += 1;
-			print(`[Upgrade] ${player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel ${val.Value}`);
-		}
-	} else if (upgradeId === "speed_boost") {
-		const val = inventory.FindFirstChild("speed_bonus") as NumberValue;
-		if (val) {
-			val.Value += 3;
+	if (inventory) {
+		if (upgradeId === "void_boomerang") {
+			const val = inventory.FindFirstChild("void_boomerang") as IntValue;
+			if (val) {
+				val.Value += 1;
+				print(`[Upgrade] ${player.Name} subió Búmeran a Nivel ${val.Value}`);
+			}
+		} else if (upgradeId === "plasma_blaster") {
+			const val = inventory.FindFirstChild("plasma_blaster") as IntValue;
+			if (val) {
+				val.Value += 1;
+				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel ${val.Value}`);
+			}
+		} else if (upgradeId === "speed_boost") {
+			const val = inventory.FindFirstChild("speed_bonus") as NumberValue;
+			if (val) {
+				val.Value += 3;
+				const hum = player.Character?.FindFirstChildOfClass("Humanoid");
+				if (hum) hum.WalkSpeed += 3;
+			}
+		} else if (upgradeId === "max_hp") {
 			const hum = player.Character?.FindFirstChildOfClass("Humanoid");
-			if (hum) hum.WalkSpeed += 3;
-		}
-	} else if (upgradeId === "max_hp") {
-		const hum = player.Character?.FindFirstChildOfClass("Humanoid");
-		if (hum) {
-			hum.MaxHealth += 25;
-			hum.Health += 25;
+			if (hum) {
+				hum.MaxHealth += 25;
+				hum.Health += 25;
+			}
 		}
 	}
+
+	// REANUDAR JUEGO
+	isGamePaused = false;
+	print("[r-survivors] Juego reanudado.");
 });
 
-// 9. Spawner continuo de enemigos
+// 9. Spawner continuo de enemigos (respeta la pausa)
 task.spawn(() => {
 	let enemyCount = 0;
 	while (true) {
 		task.wait(1.8);
+		if (isGamePaused) continue;
+
 		if (enemiesFolder.GetChildren().size() < 30) {
 			enemyCount++;
 			const dummy = new Instance("Part");
@@ -276,6 +298,8 @@ task.spawn(() => {
 
 			let lastPlayerDamageTime = 0;
 			dummy.Touched.Connect((hitPart) => {
+				if (isGamePaused) return;
+
 				const char = hitPart.Parent;
 				const hum = char?.FindFirstChildOfClass("Humanoid");
 				if (hum && hum.Health > 0) {
@@ -290,8 +314,18 @@ task.spawn(() => {
 	}
 });
 
-// 10. IA Activa de los enemigos: persecución al jugador
+// 10. IA Activa de los enemigos: persecución al jugador (respeta la pausa)
 RunService.Heartbeat.Connect(() => {
+	if (isGamePaused) {
+		for (const enemy of enemiesFolder.GetChildren()) {
+			if (enemy.IsA("BasePart")) {
+				const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+				if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
+			}
+		}
+		return;
+	}
+
 	const allPlayers = Players.GetPlayers();
 
 	for (const enemy of enemiesFolder.GetChildren()) {

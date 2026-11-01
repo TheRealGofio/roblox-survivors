@@ -7,6 +7,8 @@ local RunService = _services.RunService
 local TweenService = _services.TweenService
 local Workspace = _services.Workspace
 print("[r-survivors] Servidor inicializado con éxito.")
+-- Estado global de juego (pausa por level up)
+local isGamePaused = false
 -- 1. Crear el suelo de la arena física (Baseplate) si no existe
 local baseplate = Workspace:FindFirstChild("Baseplate")
 if not baseplate then
@@ -102,6 +104,9 @@ local function spawnExpGem(position, expValue)
 end
 -- 5. Manejo del daño a enemigos recibido desde el cliente
 damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, knockbackDirArg)
+	if isGamePaused then
+		return nil
+	end
 	local enemy = enemyArg
 	local _damageArg = damageArg
 	local damage = if typeof(_damageArg) == "number" then damageArg else 10
@@ -144,6 +149,9 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 end)
 -- 6. Manejo de recolección de gemas y Level Up
 collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
+	if isGamePaused then
+		return nil
+	end
 	local gem = gemArg
 	if gem and gem:IsDescendantOf(dropsFolder) and gem:IsA("BasePart") then
 		local _condition = (gem:GetAttribute("ExpValue"))
@@ -162,8 +170,17 @@ collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
 				if expStat.Value >= nextLevelReq then
 					expStat.Value -= nextLevelReq
 					levelStat.Value += 1
-					print(`[r-survivors] ¡{player.Name} alcanzó el Nivel {levelStat.Value}!`)
-					-- Notificar al cliente para mostrar las 3 cartas de elección
+					print(`[r-survivors] ¡{player.Name} alcanzó el Nivel {levelStat.Value}! Pausando juego...`)
+					-- PAUSAR JUEGO
+					isGamePaused = true
+					for _, enemy in enemiesFolder:GetChildren() do
+						if enemy:IsA("BasePart") then
+							local vel = enemy:FindFirstChildOfClass("BodyVelocity")
+							if vel then
+								vel.Velocity = Vector3.new(0, 0, 0)
+							end
+						end
+					end
 					levelUpEvent:FireClient(player, levelStat.Value)
 				end
 			end
@@ -204,55 +221,60 @@ Players.PlayerAdded:Connect(function(plr)
 	moveSpeedBonus.Value = 0
 	moveSpeedBonus.Parent = inventory
 end)
--- 8. Manejo de elección de mejoras
+-- 8. Manejo de elección de mejoras y REANUDACIÓN del juego
 selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 	local upgradeId = upgradeIdArg
 	local inventory = player:FindFirstChild("Inventory")
-	if not inventory then
-		return nil
-	end
-	if upgradeId == "void_boomerang" then
-		local val = inventory:FindFirstChild("void_boomerang")
-		if val then
-			val.Value += 1
-			print(`[Upgrade] {player.Name} subió Búmeran a Nivel {val.Value}`)
-		end
-	elseif upgradeId == "plasma_blaster" then
-		local val = inventory:FindFirstChild("plasma_blaster")
-		if val then
-			val.Value += 1
-			print(`[Upgrade] {player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel {val.Value}`)
-		end
-	elseif upgradeId == "speed_boost" then
-		local val = inventory:FindFirstChild("speed_bonus")
-		if val then
-			val.Value += 3
+	if inventory then
+		if upgradeId == "void_boomerang" then
+			local val = inventory:FindFirstChild("void_boomerang")
+			if val then
+				val.Value += 1
+				print(`[Upgrade] {player.Name} subió Búmeran a Nivel {val.Value}`)
+			end
+		elseif upgradeId == "plasma_blaster" then
+			local val = inventory:FindFirstChild("plasma_blaster")
+			if val then
+				val.Value += 1
+				print(`[Upgrade] {player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel {val.Value}`)
+			end
+		elseif upgradeId == "speed_boost" then
+			local val = inventory:FindFirstChild("speed_bonus")
+			if val then
+				val.Value += 3
+				local _hum = player.Character
+				if _hum ~= nil then
+					_hum = _hum:FindFirstChildOfClass("Humanoid")
+				end
+				local hum = _hum
+				if hum then
+					hum.WalkSpeed += 3
+				end
+			end
+		elseif upgradeId == "max_hp" then
 			local _hum = player.Character
 			if _hum ~= nil then
 				_hum = _hum:FindFirstChildOfClass("Humanoid")
 			end
 			local hum = _hum
 			if hum then
-				hum.WalkSpeed += 3
+				hum.MaxHealth += 25
+				hum.Health += 25
 			end
 		end
-	elseif upgradeId == "max_hp" then
-		local _hum = player.Character
-		if _hum ~= nil then
-			_hum = _hum:FindFirstChildOfClass("Humanoid")
-		end
-		local hum = _hum
-		if hum then
-			hum.MaxHealth += 25
-			hum.Health += 25
-		end
 	end
+	-- REANUDAR JUEGO
+	isGamePaused = false
+	print("[r-survivors] Juego reanudado.")
 end)
--- 9. Spawner continuo de enemigos
+-- 9. Spawner continuo de enemigos (respeta la pausa)
 task.spawn(function()
 	local enemyCount = 0
 	while true do
 		task.wait(1.8)
+		if isGamePaused then
+			continue
+		end
 		if #enemiesFolder:GetChildren() < 30 then
 			enemyCount += 1
 			local dummy = Instance.new("Part")
@@ -275,6 +297,9 @@ task.spawn(function()
 			bodyVelocity.Parent = dummy
 			local lastPlayerDamageTime = 0
 			dummy.Touched:Connect(function(hitPart)
+				if isGamePaused then
+					return nil
+				end
 				local char = hitPart.Parent
 				local _hum = char
 				if _hum ~= nil then
@@ -292,8 +317,19 @@ task.spawn(function()
 		end
 	end
 end)
--- 10. IA Activa de los enemigos: persecución al jugador
+-- 10. IA Activa de los enemigos: persecución al jugador (respeta la pausa)
 RunService.Heartbeat:Connect(function()
+	if isGamePaused then
+		for _, enemy in enemiesFolder:GetChildren() do
+			if enemy:IsA("BasePart") then
+				local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+				if bodyVel then
+					bodyVel.Velocity = Vector3.new(0, 0, 0)
+				end
+			end
+		end
+		return nil
+	end
 	local allPlayers = Players:GetPlayers()
 	for _, enemy in enemiesFolder:GetChildren() do
 		if enemy:IsA("BasePart") and enemy:GetAttribute("InKnockback") ~= true then
