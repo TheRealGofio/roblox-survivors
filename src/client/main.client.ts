@@ -710,7 +710,6 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 							const knockbackDir = enemy.Position.sub(blade.Position).Unit;
 							damageEvent?.FireServer(enemy, damage, knockbackDir);
 							VisualEffects.showDamagePopup(enemy.Position, damage);
-							SoundManager.playHitSound();
 
 							const origColor = enemy.Color;
 							enemy.Color = new Color3(1, 1, 1);

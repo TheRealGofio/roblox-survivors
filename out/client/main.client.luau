@@ -841,7 +841,6 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 								_result_1:FireServer(enemy, damage, knockbackDir)
 							end
 							VisualEffects.showDamagePopup(enemy.Position, damage)
-							SoundManager.playHitSound()
 							local origColor = enemy.Color
 							enemy.Color = Color3.new(1, 1, 1)
 							task.delay(0.08, function()
