@@ -5,19 +5,23 @@ import { VisualEffects } from "./effects";
 const player = Players.LocalPlayer;
 const playerGui = player.WaitForChild("PlayerGui") as PlayerGui;
 
-// Estado local de pausa
+// Estado local de pausa y partida
 let isClientPaused = false;
+let isGameOver = false;
+let startTime = os.clock();
+let enemiesDefeatedCount = 0;
 
-// 1. HUD de EXP y Nivel
+// 1. HUD de EXP, Nivel y Temporizador
 const hudScreen = new Instance("ScreenGui");
 hudScreen.Name = "SurvivorHUD";
 hudScreen.ResetOnSpawn = false;
 hudScreen.Parent = playerGui;
 
+// Barra de EXP
 const barBg = new Instance("Frame");
 barBg.Name = "ExpBarBackground";
-barBg.Size = new UDim2(0.6, 0, 0, 18);
-barBg.Position = new UDim2(0.2, 0, 0.02, 0);
+barBg.Size = new UDim2(0.55, 0, 0, 18);
+barBg.Position = new UDim2(0.225, 0, 0.02, 0);
 barBg.BackgroundColor3 = new Color3(0.1, 0.12, 0.15);
 barBg.BorderSizePixel = 0;
 barBg.Parent = hudScreen;
@@ -48,6 +52,33 @@ levelText.TextSize = 13;
 levelText.TextStrokeTransparency = 0.5;
 levelText.Parent = barBg;
 
+// Temporizador central en el HUD
+const timerLabel = new Instance("TextLabel");
+timerLabel.Name = "GameTimer";
+timerLabel.Size = new UDim2(0, 120, 0, 30);
+timerLabel.Position = new UDim2(0.5, -60, 0.05, 0);
+timerLabel.BackgroundTransparency = 1;
+timerLabel.Font = Enum.Font.FredokaOne;
+timerLabel.Text = "00:00";
+timerLabel.TextSize = 22;
+timerLabel.TextColor3 = new Color3(1, 0.9, 0.4); // Amarillo suave
+timerLabel.TextStrokeTransparency = 0.2;
+timerLabel.Parent = hudScreen;
+
+task.spawn(() => {
+	while (true) {
+		task.wait(1.0);
+		if (!isGameOver && !isClientPaused) {
+			const elapsed = math.floor(os.clock() - startTime);
+			const mins = math.floor(elapsed / 60);
+			const secs = elapsed % 60;
+			const minStr = mins < 10 ? `0${mins}` : `${mins}`;
+			const secStr = secs < 10 ? `0${secs}` : `${secs}`;
+			timerLabel.Text = `${minStr}:${secStr}`;
+		}
+	}
+});
+
 // 2. Obtener referencias de RemoteEvents
 let networkFolder = Workspace.WaitForChild("Network", 5) as Folder;
 let damageEvent = networkFolder ? (networkFolder.WaitForChild("DamageEnemy", 5) as RemoteEvent) : undefined;
@@ -55,7 +86,120 @@ let collectGemEvent = networkFolder ? (networkFolder.WaitForChild("CollectGem", 
 let levelUpEvent = networkFolder ? (networkFolder.WaitForChild("LevelUp", 5) as RemoteEvent) : undefined;
 let selectUpgradeEvent = networkFolder ? (networkFolder.WaitForChild("SelectUpgrade", 5) as RemoteEvent) : undefined;
 
-// 3. UI del Menú de Level Up (3 Cartas)
+// 3. UI de Game Over
+const gameOverGui = new Instance("ScreenGui");
+gameOverGui.Name = "GameOverScreen";
+gameOverGui.Enabled = false;
+gameOverGui.ResetOnSpawn = false;
+gameOverGui.Parent = playerGui;
+
+const goBackdrop = new Instance("Frame");
+goBackdrop.Size = new UDim2(1, 0, 1, 0);
+goBackdrop.BackgroundColor3 = new Color3(0.05, 0.02, 0.04);
+goBackdrop.BackgroundTransparency = 0.25;
+goBackdrop.BorderSizePixel = 0;
+goBackdrop.Parent = gameOverGui;
+
+const goCard = new Instance("Frame");
+goCard.Size = new UDim2(0, 420, 0, 360);
+goCard.Position = new UDim2(0.5, -210, 0.5, -180);
+goCard.BackgroundColor3 = new Color3(0.12, 0.14, 0.2);
+goCard.BorderSizePixel = 0;
+goCard.Parent = goBackdrop;
+
+const goCardCorner = new Instance("UICorner");
+goCardCorner.CornerRadius = new UDim(0, 16);
+goCardCorner.Parent = goCard;
+
+const goCardStroke = new Instance("UIStroke");
+goCardStroke.Thickness = 3;
+goCardStroke.Color = new Color3(0.9, 0.2, 0.3); // Rojo sangre neón
+goCardStroke.Parent = goCard;
+
+const goTitle = new Instance("TextLabel");
+goTitle.Size = new UDim2(1, 0, 0, 50);
+goTitle.Position = new UDim2(0, 0, 0.05, 0);
+goTitle.BackgroundTransparency = 1;
+goTitle.Font = Enum.Font.FredokaOne;
+goTitle.Text = "HAS CAÍDO";
+goTitle.TextSize = 36;
+goTitle.TextColor3 = new Color3(0.95, 0.25, 0.3);
+goTitle.TextStrokeTransparency = 0;
+goTitle.Parent = goCard;
+
+const goStats = new Instance("TextLabel");
+goStats.Name = "StatsLabel";
+goStats.Size = new UDim2(0.9, 0, 0, 140);
+goStats.Position = new UDim2(0.05, 0, 0.25, 0);
+goStats.BackgroundTransparency = 1;
+goStats.Font = Enum.Font.GothamMedium;
+goStats.Text = "Tiempo: 00:00\nNivel: 1\nEnemigos eliminados: 0";
+goStats.TextSize = 16;
+goStats.TextColor3 = new Color3(0.9, 0.9, 0.95);
+goStats.LineHeight = 1.4;
+goStats.Parent = goCard;
+
+const restartBtn = new Instance("TextButton");
+restartBtn.Size = new UDim2(0.7, 0, 0, 45);
+restartBtn.Position = new UDim2(0.15, 0, 0.78, 0);
+restartBtn.BackgroundColor3 = new Color3(0.15, 0.75, 0.45);
+restartBtn.Font = Enum.Font.FredokaOne;
+restartBtn.Text = "REINTENTAR PARTIDA";
+restartBtn.TextColor3 = new Color3(1, 1, 1);
+restartBtn.TextSize = 18;
+restartBtn.BorderSizePixel = 0;
+restartBtn.Parent = goCard;
+
+const btnCorner = new Instance("UICorner");
+btnCorner.CornerRadius = new UDim(0, 8);
+btnCorner.Parent = restartBtn;
+
+restartBtn.MouseButton1Click.Connect(() => {
+	// Reaparecer al jugador con salud completa
+	gameOverGui.Enabled = false;
+	isGameOver = false;
+	startTime = os.clock();
+	enemiesDefeatedCount = 0;
+
+	const char = player.Character;
+	const hum = char?.FindFirstChildOfClass("Humanoid");
+	if (hum) {
+		hum.Health = hum.MaxHealth;
+	}
+	// Teleportar a la base
+	const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+	if (hrp) {
+		hrp.CFrame = new CFrame(0, 3, 0);
+	}
+});
+
+// Detectar muerte del jugador para mostrar Game Over
+function connectDeathListener(character: Model) {
+	const hum = character.WaitForChild("Humanoid", 5) as Humanoid;
+	if (hum) {
+		hum.Died.Connect(() => {
+			if (isGameOver) return;
+			isGameOver = true;
+
+			const elapsed = math.floor(os.clock() - startTime);
+			const mins = math.floor(elapsed / 60);
+			const secs = elapsed % 60;
+			const minStr = mins < 10 ? `0${mins}` : `${mins}`;
+			const secStr = secs < 10 ? `0${secs}` : `${secs}`;
+
+			const leaderstats = player.FindFirstChild("leaderstats") as Folder;
+			const currentLvl = (leaderstats?.FindFirstChild("Level") as IntValue)?.Value ?? 1;
+
+			goStats.Text = `⏱️ Tiempo Sobrevivido: ${minStr}:${secStr}\n⭐ Nivel Alcanzado: ${currentLvl}\n💀 Bajas Confirmadas: ${enemiesDefeatedCount}`;
+			gameOverGui.Enabled = true;
+		});
+	}
+}
+
+if (player.Character) connectDeathListener(player.Character);
+player.CharacterAdded.Connect(connectDeathListener);
+
+// 4. UI del Menú de Level Up (3 Cartas)
 const levelUpGui = new Instance("ScreenGui");
 levelUpGui.Name = "LevelUpScreen";
 levelUpGui.Enabled = false;
@@ -96,10 +240,11 @@ uiLayout.Parent = cardsContainer;
 let savedWalkSpeed = 16;
 
 function showLevelUpModal() {
+	if (isGameOver) return;
+
 	isClientPaused = true;
 	levelUpGui.Enabled = true;
 
-	// Congelar movimiento del personaje del jugador
 	const hum = player.Character?.FindFirstChildOfClass("Humanoid");
 	if (hum) {
 		savedWalkSpeed = hum.WalkSpeed > 0 ? hum.WalkSpeed : savedWalkSpeed;
@@ -201,9 +346,9 @@ function showLevelUpModal() {
 		selectBtn.TextSize = 14;
 		selectBtn.Parent = card;
 
-		const btnCorner = new Instance("UICorner");
-		btnCorner.CornerRadius = new UDim(0, 6);
-		btnCorner.Parent = selectBtn;
+		const sCorner = new Instance("UICorner");
+		sCorner.CornerRadius = new UDim(0, 6);
+		sCorner.Parent = selectBtn;
 
 		card.MouseButton1Click.Connect(() => {
 			if (!selectUpgradeEvent) {
@@ -214,7 +359,6 @@ function showLevelUpModal() {
 			levelUpGui.Enabled = false;
 			isClientPaused = false;
 
-			// Restaurar movimiento del jugador
 			const currentHum = player.Character?.FindFirstChildOfClass("Humanoid");
 			if (currentHum) {
 				const extraSpeed = opt.id === "speed_boost" ? 3 : 0;
@@ -224,7 +368,7 @@ function showLevelUpModal() {
 	}
 }
 
-// 4. Conectar recepción de Level Up
+// 5. Conectar recepción de Level Up
 if (levelUpEvent) {
 	levelUpEvent.OnClientEvent.Connect(() => {
 		showLevelUpModal();
@@ -239,7 +383,7 @@ if (levelUpEvent) {
 	});
 }
 
-// 5. Actualizar barra de EXP en el cliente
+// 6. Actualizar barra de EXP en el cliente
 task.spawn(() => {
 	const leaderstats = player.WaitForChild("leaderstats", 10) as Folder;
 	if (leaderstats) {
@@ -264,10 +408,10 @@ task.spawn(() => {
 	}
 });
 
-// 6. Armas: Búmeran del Vacío (respeta la pausa)
+// 7. Armas: Búmeran del Vacío
 task.spawn(() => {
 	while (true) {
-		if (isClientPaused) {
+		if (isClientPaused || isGameOver) {
 			task.wait(0.2);
 			continue;
 		}
@@ -278,7 +422,7 @@ task.spawn(() => {
 
 		task.wait(boomerangDef.cooldown);
 
-		if (isClientPaused) continue;
+		if (isClientPaused || isGameOver) continue;
 
 		const character = player.Character;
 		const rootPart = character?.FindFirstChild("HumanoidRootPart") as BasePart;
@@ -336,7 +480,7 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 	const hitCooldowns = new Map<Instance, number>();
 
 	const connection = RunService.Heartbeat.Connect((dt) => {
-		if (isClientPaused) return;
+		if (isClientPaused || isGameOver) return;
 
 		blade.Orientation = blade.Orientation.add(new Vector3(0, 1600 * dt, 0));
 		const rootPart = player.Character?.FindFirstChild("HumanoidRootPart") as BasePart;
@@ -387,6 +531,12 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 							task.delay(0.08, () => {
 								if (enemy && enemy.Parent) enemy.Color = origColor;
 							});
+
+							// Contabilizar bajas si el daño remata al enemigo
+							const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
+							if (enemyHp - damage <= 0) {
+								enemiesDefeatedCount++;
+							}
 						}
 					}
 				}
@@ -397,10 +547,10 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 	Debris.AddItem(blade, 4);
 }
 
-// 7. Armas: Bláster de Plasma (Desbloqueable, respeta la pausa)
+// 8. Armas: Bláster de Plasma
 task.spawn(() => {
 	while (true) {
-		if (isClientPaused) {
+		if (isClientPaused || isGameOver) {
 			task.wait(0.2);
 			continue;
 		}
@@ -416,7 +566,7 @@ task.spawn(() => {
 		const plasmaDef = WEAPONS.plasma_blaster.levels[math.min(plasmaLvl, WEAPONS.plasma_blaster.levels.size()) - 1];
 		task.wait(plasmaDef.cooldown);
 
-		if (isClientPaused) continue;
+		if (isClientPaused || isGameOver) continue;
 
 		const character = player.Character;
 		const rootPart = character?.FindFirstChild("HumanoidRootPart") as BasePart;
@@ -464,7 +614,7 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 
 	let alive = true;
 	const conn = RunService.Heartbeat.Connect((dt) => {
-		if (isClientPaused) return;
+		if (isClientPaused || isGameOver) return;
 
 		if (!alive || !targetEnemy || !targetEnemy.Parent) {
 			conn.Disconnect();
@@ -487,6 +637,11 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 			damageEvent?.FireServer(targetEnemy, damage, dir);
 			VisualEffects.showDamagePopup(targetEnemy.Position, damage, true);
 
+			const enemyHp = (targetEnemy.GetAttribute("HP") as number) ?? 0;
+			if (enemyHp - damage <= 0) {
+				enemiesDefeatedCount++;
+			}
+
 			orb.Destroy();
 		}
 	});
@@ -494,9 +649,9 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 	Debris.AddItem(orb, 2.5);
 }
 
-// 8. Loop de recolección/imantación de gemas hacia el jugador (respeta la pausa)
+// 9. Loop de recolección/imantación de gemas hacia el jugador
 RunService.Heartbeat.Connect((dt) => {
-	if (isClientPaused) return;
+	if (isClientPaused || isGameOver) return;
 
 	const character = player.Character;
 	const rootPart = character?.FindFirstChild("HumanoidRootPart") as BasePart;

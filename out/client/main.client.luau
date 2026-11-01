@@ -10,17 +10,21 @@ local WEAPONS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "w
 local VisualEffects = TS.import(script, script.Parent, "effects").VisualEffects
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
--- Estado local de pausa
+-- Estado local de pausa y partida
 local isClientPaused = false
--- 1. HUD de EXP y Nivel
+local isGameOver = false
+local startTime = os.clock()
+local enemiesDefeatedCount = 0
+-- 1. HUD de EXP, Nivel y Temporizador
 local hudScreen = Instance.new("ScreenGui")
 hudScreen.Name = "SurvivorHUD"
 hudScreen.ResetOnSpawn = false
 hudScreen.Parent = playerGui
+-- Barra de EXP
 local barBg = Instance.new("Frame")
 barBg.Name = "ExpBarBackground"
-barBg.Size = UDim2.new(0.6, 0, 0, 18)
-barBg.Position = UDim2.new(0.2, 0, 0.02, 0)
+barBg.Size = UDim2.new(0.55, 0, 0, 18)
+barBg.Position = UDim2.new(0.225, 0, 0.02, 0)
 barBg.BackgroundColor3 = Color3.new(0.1, 0.12, 0.15)
 barBg.BorderSizePixel = 0
 barBg.Parent = hudScreen
@@ -46,13 +50,159 @@ levelText.TextColor3 = Color3.new(1, 1, 1)
 levelText.TextSize = 13
 levelText.TextStrokeTransparency = 0.5
 levelText.Parent = barBg
+-- Temporizador central en el HUD
+local timerLabel = Instance.new("TextLabel")
+timerLabel.Name = "GameTimer"
+timerLabel.Size = UDim2.new(0, 120, 0, 30)
+timerLabel.Position = UDim2.new(0.5, -60, 0.05, 0)
+timerLabel.BackgroundTransparency = 1
+timerLabel.Font = Enum.Font.FredokaOne
+timerLabel.Text = "00:00"
+timerLabel.TextSize = 22
+timerLabel.TextColor3 = Color3.new(1, 0.9, 0.4)
+timerLabel.TextStrokeTransparency = 0.2
+timerLabel.Parent = hudScreen
+task.spawn(function()
+	while true do
+		task.wait(1.0)
+		if not isGameOver and not isClientPaused then
+			local elapsed = math.floor(os.clock() - startTime)
+			local mins = math.floor(elapsed / 60)
+			local secs = elapsed % 60
+			local minStr = if mins < 10 then `0{mins}` else `{mins}`
+			local secStr = if secs < 10 then `0{secs}` else `{secs}`
+			timerLabel.Text = `{minStr}:{secStr}`
+		end
+	end
+end)
 -- 2. Obtener referencias de RemoteEvents
 local networkFolder = Workspace:WaitForChild("Network", 5)
 local damageEvent = if networkFolder then (networkFolder:WaitForChild("DamageEnemy", 5)) else nil
 local collectGemEvent = if networkFolder then (networkFolder:WaitForChild("CollectGem", 5)) else nil
 local levelUpEvent = if networkFolder then (networkFolder:WaitForChild("LevelUp", 5)) else nil
 local selectUpgradeEvent = if networkFolder then (networkFolder:WaitForChild("SelectUpgrade", 5)) else nil
--- 3. UI del Menú de Level Up (3 Cartas)
+-- 3. UI de Game Over
+local gameOverGui = Instance.new("ScreenGui")
+gameOverGui.Name = "GameOverScreen"
+gameOverGui.Enabled = false
+gameOverGui.ResetOnSpawn = false
+gameOverGui.Parent = playerGui
+local goBackdrop = Instance.new("Frame")
+goBackdrop.Size = UDim2.new(1, 0, 1, 0)
+goBackdrop.BackgroundColor3 = Color3.new(0.05, 0.02, 0.04)
+goBackdrop.BackgroundTransparency = 0.25
+goBackdrop.BorderSizePixel = 0
+goBackdrop.Parent = gameOverGui
+local goCard = Instance.new("Frame")
+goCard.Size = UDim2.new(0, 420, 0, 360)
+goCard.Position = UDim2.new(0.5, -210, 0.5, -180)
+goCard.BackgroundColor3 = Color3.new(0.12, 0.14, 0.2)
+goCard.BorderSizePixel = 0
+goCard.Parent = goBackdrop
+local goCardCorner = Instance.new("UICorner")
+goCardCorner.CornerRadius = UDim.new(0, 16)
+goCardCorner.Parent = goCard
+local goCardStroke = Instance.new("UIStroke")
+goCardStroke.Thickness = 3
+goCardStroke.Color = Color3.new(0.9, 0.2, 0.3)
+goCardStroke.Parent = goCard
+local goTitle = Instance.new("TextLabel")
+goTitle.Size = UDim2.new(1, 0, 0, 50)
+goTitle.Position = UDim2.new(0, 0, 0.05, 0)
+goTitle.BackgroundTransparency = 1
+goTitle.Font = Enum.Font.FredokaOne
+goTitle.Text = "HAS CAÍDO"
+goTitle.TextSize = 36
+goTitle.TextColor3 = Color3.new(0.95, 0.25, 0.3)
+goTitle.TextStrokeTransparency = 0
+goTitle.Parent = goCard
+local goStats = Instance.new("TextLabel")
+goStats.Name = "StatsLabel"
+goStats.Size = UDim2.new(0.9, 0, 0, 140)
+goStats.Position = UDim2.new(0.05, 0, 0.25, 0)
+goStats.BackgroundTransparency = 1
+goStats.Font = Enum.Font.GothamMedium
+goStats.Text = "Tiempo: 00:00\nNivel: 1\nEnemigos eliminados: 0"
+goStats.TextSize = 16
+goStats.TextColor3 = Color3.new(0.9, 0.9, 0.95)
+goStats.LineHeight = 1.4
+goStats.Parent = goCard
+local restartBtn = Instance.new("TextButton")
+restartBtn.Size = UDim2.new(0.7, 0, 0, 45)
+restartBtn.Position = UDim2.new(0.15, 0, 0.78, 0)
+restartBtn.BackgroundColor3 = Color3.new(0.15, 0.75, 0.45)
+restartBtn.Font = Enum.Font.FredokaOne
+restartBtn.Text = "REINTENTAR PARTIDA"
+restartBtn.TextColor3 = Color3.new(1, 1, 1)
+restartBtn.TextSize = 18
+restartBtn.BorderSizePixel = 0
+restartBtn.Parent = goCard
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 8)
+btnCorner.Parent = restartBtn
+restartBtn.MouseButton1Click:Connect(function()
+	-- Reaparecer al jugador con salud completa
+	gameOverGui.Enabled = false
+	isGameOver = false
+	startTime = os.clock()
+	enemiesDefeatedCount = 0
+	local char = player.Character
+	local _hum = char
+	if _hum ~= nil then
+		_hum = _hum:FindFirstChildOfClass("Humanoid")
+	end
+	local hum = _hum
+	if hum then
+		hum.Health = hum.MaxHealth
+	end
+	-- Teleportar a la base
+	local _result = char
+	if _result ~= nil then
+		_result = _result:FindFirstChild("HumanoidRootPart")
+	end
+	local hrp = _result
+	if hrp then
+		hrp.CFrame = CFrame.new(0, 3, 0)
+	end
+end)
+-- Detectar muerte del jugador para mostrar Game Over
+local function connectDeathListener(character)
+	local hum = character:WaitForChild("Humanoid", 5)
+	if hum then
+		hum.Died:Connect(function()
+			if isGameOver then
+				return nil
+			end
+			isGameOver = true
+			local elapsed = math.floor(os.clock() - startTime)
+			local mins = math.floor(elapsed / 60)
+			local secs = elapsed % 60
+			local minStr = if mins < 10 then `0{mins}` else `{mins}`
+			local secStr = if secs < 10 then `0{secs}` else `{secs}`
+			local leaderstats = player:FindFirstChild("leaderstats")
+			local _result = leaderstats
+			if _result ~= nil then
+				_result = _result:FindFirstChild("Level")
+			end
+			local _result_1 = _result
+			if _result_1 ~= nil then
+				_result_1 = _result_1.Value
+			end
+			local _condition = _result_1
+			if _condition == nil then
+				_condition = 1
+			end
+			local currentLvl = _condition
+			goStats.Text = `⏱️ Tiempo Sobrevivido: {minStr}:{secStr}\n⭐ Nivel Alcanzado: {currentLvl}\n💀 Bajas Confirmadas: {enemiesDefeatedCount}`
+			gameOverGui.Enabled = true
+		end)
+	end
+end
+if player.Character then
+	connectDeathListener(player.Character)
+end
+player.CharacterAdded:Connect(connectDeathListener)
+-- 4. UI del Menú de Level Up (3 Cartas)
 local levelUpGui = Instance.new("ScreenGui")
 levelUpGui.Name = "LevelUpScreen"
 levelUpGui.Enabled = false
@@ -87,9 +237,11 @@ uiLayout.Padding = UDim.new(0, 25)
 uiLayout.Parent = cardsContainer
 local savedWalkSpeed = 16
 local function showLevelUpModal()
+	if isGameOver then
+		return nil
+	end
 	isClientPaused = true
 	levelUpGui.Enabled = true
-	-- Congelar movimiento del personaje del jugador
 	local _hum = player.Character
 	if _hum ~= nil then
 		_hum = _hum:FindFirstChildOfClass("Humanoid")
@@ -204,9 +356,9 @@ local function showLevelUpModal()
 		selectBtn.TextColor3 = Color3.new(0.1, 0.1, 0.1)
 		selectBtn.TextSize = 14
 		selectBtn.Parent = card
-		local btnCorner = Instance.new("UICorner")
-		btnCorner.CornerRadius = UDim.new(0, 6)
-		btnCorner.Parent = selectBtn
+		local sCorner = Instance.new("UICorner")
+		sCorner.CornerRadius = UDim.new(0, 6)
+		sCorner.Parent = selectBtn
 		card.MouseButton1Click:Connect(function()
 			if not selectUpgradeEvent then
 				local net = Workspace:FindFirstChild("Network")
@@ -220,7 +372,6 @@ local function showLevelUpModal()
 			end
 			levelUpGui.Enabled = false
 			isClientPaused = false
-			-- Restaurar movimiento del jugador
 			local _currentHum = player.Character
 			if _currentHum ~= nil then
 				_currentHum = _currentHum:FindFirstChildOfClass("Humanoid")
@@ -233,7 +384,7 @@ local function showLevelUpModal()
 		end)
 	end
 end
--- 4. Conectar recepción de Level Up
+-- 5. Conectar recepción de Level Up
 if levelUpEvent then
 	levelUpEvent.OnClientEvent:Connect(function()
 		showLevelUpModal()
@@ -254,7 +405,7 @@ else
 		end
 	end)
 end
--- 5. Actualizar barra de EXP en el cliente
+-- 6. Actualizar barra de EXP en el cliente
 task.spawn(function()
 	local leaderstats = player:WaitForChild("leaderstats", 10)
 	if leaderstats then
@@ -281,11 +432,11 @@ task.spawn(function()
 		updateUi()
 	end
 end)
--- 6. Armas: Búmeran del Vacío (respeta la pausa)
+-- 7. Armas: Búmeran del Vacío
 local fireBoomerang
 task.spawn(function()
 	while true do
-		if isClientPaused then
+		if isClientPaused or isGameOver then
 			task.wait(0.2)
 			continue
 		end
@@ -305,7 +456,7 @@ task.spawn(function()
 		local boomerangLvl = _condition
 		local boomerangDef = WEAPONS.void_boomerang.levels[math.min(boomerangLvl, #WEAPONS.void_boomerang.levels)]
 		task.wait(boomerangDef.cooldown)
-		if isClientPaused then
+		if isClientPaused or isGameOver then
 			continue
 		end
 		local character = player.Character
@@ -390,7 +541,7 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 	local hitCooldowns = {}
 	local connection
 	connection = RunService.Heartbeat:Connect(function(dt)
-		if isClientPaused then
+		if isClientPaused or isGameOver then
 			return nil
 		end
 		local _orientation = blade.Orientation
@@ -478,6 +629,15 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 									enemy.Color = origColor
 								end
 							end)
+							-- Contabilizar bajas si el daño remata al enemigo
+							local _condition_2 = (enemy:GetAttribute("HP"))
+							if _condition_2 == nil then
+								_condition_2 = 0
+							end
+							local enemyHp = _condition_2
+							if enemyHp - damage <= 0 then
+								enemiesDefeatedCount += 1
+							end
 						end
 					end
 				end
@@ -486,11 +646,11 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 	end)
 	Debris:AddItem(blade, 4)
 end
--- 7. Armas: Bláster de Plasma (Desbloqueable, respeta la pausa)
+-- 8. Armas: Bláster de Plasma
 local firePlasmaOrb
 task.spawn(function()
 	while true do
-		if isClientPaused then
+		if isClientPaused or isGameOver then
 			task.wait(0.2)
 			continue
 		end
@@ -514,7 +674,7 @@ task.spawn(function()
 		end
 		local plasmaDef = WEAPONS.plasma_blaster.levels[math.min(plasmaLvl, #WEAPONS.plasma_blaster.levels)]
 		task.wait(plasmaDef.cooldown)
-		if isClientPaused then
+		if isClientPaused or isGameOver then
 			continue
 		end
 		local character = player.Character
@@ -577,7 +737,7 @@ function firePlasmaOrb(startPos, targetEnemy, damage, speed)
 	local alive = true
 	local conn
 	conn = RunService.Heartbeat:Connect(function(dt)
-		if isClientPaused then
+		if isClientPaused or isGameOver then
 			return nil
 		end
 		if not alive or not targetEnemy or not targetEnemy.Parent then
@@ -609,14 +769,22 @@ function firePlasmaOrb(startPos, targetEnemy, damage, speed)
 				_result:FireServer(targetEnemy, damage, dir)
 			end
 			VisualEffects.showDamagePopup(targetEnemy.Position, damage, true)
+			local _condition = (targetEnemy:GetAttribute("HP"))
+			if _condition == nil then
+				_condition = 0
+			end
+			local enemyHp = _condition
+			if enemyHp - damage <= 0 then
+				enemiesDefeatedCount += 1
+			end
 			orb:Destroy()
 		end
 	end)
 	Debris:AddItem(orb, 2.5)
 end
--- 8. Loop de recolección/imantación de gemas hacia el jugador (respeta la pausa)
+-- 9. Loop de recolección/imantación de gemas hacia el jugador
 RunService.Heartbeat:Connect(function(dt)
-	if isClientPaused then
+	if isClientPaused or isGameOver then
 		return nil
 	end
 	local character = player.Character
