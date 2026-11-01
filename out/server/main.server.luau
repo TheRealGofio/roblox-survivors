@@ -101,6 +101,12 @@ if not debugActionEvent then
 	debugActionEvent.Name = "DebugAction"
 	debugActionEvent.Parent = networkFolder
 end
+local restartGameEvent = networkFolder:FindFirstChild("RestartGame")
+if not restartGameEvent then
+	restartGameEvent = Instance.new("RemoteEvent")
+	restartGameEvent.Name = "RestartGame"
+	restartGameEvent.Parent = networkFolder
+end
 -- 4. Función generadora de Gemas (Cristales de EXP)
 local function spawnExpGem(position, expValue)
 	if expValue == nil then
@@ -572,6 +578,85 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 		if hum then
 			hum.WalkSpeed += 6
 		end
+	end
+end)
+-- Manejo de reinicio completo de partida
+restartGameEvent.OnServerEvent:Connect(function(player)
+	print(`[r-survivors] Reiniciando partida por completo para {player.Name}...`)
+	-- 1. Limpiar todos los enemigos activos
+	for _, enemy in enemiesFolder:GetChildren() do
+		enemy:Destroy()
+	end
+	-- 2. Limpiar todos los proyectiles enemigos
+	for _, proj in enemyProjectilesFolder:GetChildren() do
+		proj:Destroy()
+	end
+	-- 3. Limpiar todas las gemas y drops del mapa
+	for _, drop in dropsFolder:GetChildren() do
+		drop:Destroy()
+	end
+	-- 4. Resetear tiempo de juego y banderas
+	gameElapsedTime = 0
+	bossSpawned = false
+	isGamePaused = false
+	-- 5. Resetear stats e inventario del jugador
+	local leaderstats = player:FindFirstChild("leaderstats")
+	if leaderstats then
+		local lvl = leaderstats:FindFirstChild("Level")
+		if lvl then
+			lvl.Value = 1
+		end
+		local exp = leaderstats:FindFirstChild("EXP")
+		if exp then
+			exp.Value = 0
+		end
+	end
+	local inventory = player:FindFirstChild("Inventory")
+	if inventory then
+		local b = inventory:FindFirstChild("void_boomerang")
+		if b then
+			b.Value = 1
+		end
+		local p = inventory:FindFirstChild("plasma_blaster")
+		if p then
+			p.Value = 0
+		end
+		local o = inventory:FindFirstChild("chrono_orbits")
+		if o then
+			o.Value = 0
+		end
+		local n = inventory:FindFirstChild("nova_beam")
+		if n then
+			n.Value = 0
+		end
+		local sp = inventory:FindFirstChild("speed_bonus")
+		if sp then
+			sp.Value = 0
+		end
+		local hp = inventory:FindFirstChild("max_hp_bonus")
+		if hp then
+			hp.Value = 0
+		end
+	end
+	-- 6. Restaurar personaje
+	local char = player.Character
+	local _hum = char
+	if _hum ~= nil then
+		_hum = _hum:FindFirstChildOfClass("Humanoid")
+	end
+	local hum = _hum
+	if hum then
+		hum.MaxHealth = 100
+		hum.Health = 100
+		hum.WalkSpeed = 16
+	end
+	local _result = char
+	if _result ~= nil then
+		_result = _result:FindFirstChild("HumanoidRootPart")
+	end
+	local hrp = _result
+	if hrp then
+		hrp.CFrame = CFrame.new(0, 3, 0)
 	end
 end)
 -- 10. Función para crear cualquier enemigo de ENEMY_TYPES

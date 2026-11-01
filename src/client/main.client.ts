@@ -196,7 +196,9 @@ let selectUpgradeEvent = networkFolder ? (networkFolder.WaitForChild("SelectUpgr
 let bossAlertEvent = networkFolder ? (networkFolder.WaitForChild("BossAlert", 5) as RemoteEvent) : undefined;
 let debugActionEvent = networkFolder ? (networkFolder.WaitForChild("DebugAction", 5) as RemoteEvent) : undefined;
 
-// Panel de Debug Plegable (Tecla F2 o Botón "DEBUG" en pantalla)
+let restartGameEvent = networkFolder ? (networkFolder.WaitForChild("RestartGame", 5) as RemoteEvent) : undefined;
+
+// Panel de Debug Plegable Organizado por Categorías (F2 o Botón)
 const debugGui = new Instance("ScreenGui");
 debugGui.Name = "DebugGui";
 debugGui.ResetOnSpawn = false;
@@ -204,8 +206,8 @@ debugGui.Parent = playerGui;
 
 const debugToggleBtn = new Instance("TextButton");
 debugToggleBtn.Name = "DebugToggle";
-debugToggleBtn.Size = new UDim2(0, 90, 0, 30);
-debugToggleBtn.Position = new UDim2(0.98, -90, 0.02, 0);
+debugToggleBtn.Size = new UDim2(0, 95, 0, 30);
+debugToggleBtn.Position = new UDim2(0.98, -95, 0.02, 0);
 debugToggleBtn.BackgroundColor3 = new Color3(0.18, 0.2, 0.28);
 debugToggleBtn.Font = Enum.Font.FredokaOne;
 debugToggleBtn.Text = "🛠️ DEBUG";
@@ -219,9 +221,9 @@ dbCorner.Parent = debugToggleBtn;
 
 const debugPanel = new Instance("Frame");
 debugPanel.Name = "DebugPanel";
-debugPanel.Size = new UDim2(0, 220, 0, 500);
-debugPanel.Position = new UDim2(0.98, -220, 0.07, 0);
-debugPanel.BackgroundColor3 = new Color3(0.1, 0.12, 0.16);
+debugPanel.Size = new UDim2(0, 480, 0, 260); // Panel horizontal apaisado con columnas
+debugPanel.Position = new UDim2(0.98, -480, 0.065, 0);
+debugPanel.BackgroundColor3 = new Color3(0.08, 0.1, 0.14);
 debugPanel.BorderSizePixel = 0;
 debugPanel.Visible = false;
 debugPanel.Parent = debugGui;
@@ -235,51 +237,98 @@ dpStroke.Color = new Color3(1, 0.85, 0.2);
 dpStroke.Thickness = 1.5;
 dpStroke.Parent = debugPanel;
 
-const dpLayout = new Instance("UIListLayout");
-dpLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center;
-dpLayout.Padding = new UDim(0, 6);
-dpLayout.Parent = debugPanel;
+const columnsContainer = new Instance("Frame");
+columnsContainer.Size = new UDim2(1, -16, 1, -16);
+columnsContainer.Position = new UDim2(0, 8, 0, 8);
+columnsContainer.BackgroundTransparency = 1;
+columnsContainer.Parent = debugPanel;
 
-const dpPadding = new Instance("UIPadding");
-dpPadding.PaddingTop = new UDim(0, 8);
-dpPadding.PaddingBottom = new UDim(0, 8);
-dpPadding.Parent = debugPanel;
+const columnsLayout = new Instance("UIListLayout");
+columnsLayout.FillDirection = Enum.FillDirection.Horizontal;
+columnsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center;
+columnsLayout.Padding = new UDim(0, 10);
+columnsLayout.Parent = columnsContainer;
 
-const debugButtons = [
-	{ id: "instant_level_up", label: "⭐ Subir de Nivel" },
-	{ id: "unlock_all_weapons", label: "⚡ TODAS LAS ARMAS (MÁX)" },
-	{ id: "give_nova", label: "🔥 +1 Rayo Nova" },
-	{ id: "give_orbits", label: "🪐 +1 Órbitas Crono" },
-	{ id: "give_plasma", label: "🟣 +1 Bláster Plasma" },
-	{ id: "give_speed", label: "👟 +6 Velocidad" },
-	{ id: "spawn_boss", label: "👑 Invocar Boss" },
-	{ id: "spawn_chest", label: "📦 Spawn Cofre" },
-	{ id: "spawn_magnet", label: "🧲 Spawn Imán" },
-	{ id: "heal_player", label: "❤️ Curar Jugador" },
-	{ id: "add_time", label: "⏱️ +60s Partida" },
-	{ id: "kill_all_enemies", label: "💥 Aniquilar Enemigos" },
+// 3 Categorías: Armas, Pasivas y Entorno/General
+const debugCategories = [
+	{
+		title: "⚔️ ARMAS",
+		headerColor: new Color3(0.95, 0.35, 0.2),
+		buttons: [
+			{ id: "unlock_all_weapons", label: "⚡ TODAS MÁX" },
+			{ id: "give_nova", label: "🔥 Rayo Nova" },
+			{ id: "give_orbits", label: "🪐 Órbitas Crono" },
+			{ id: "give_plasma", label: "🟣 Bláster Plasma" },
+		],
+	},
+	{
+		title: "✨ PASIVAS & STATS",
+		headerColor: new Color3(0.2, 0.75, 0.95),
+		buttons: [
+			{ id: "instant_level_up", label: "⭐ Level Up (+1)" },
+			{ id: "heal_player", label: "❤️ Curar al 100%" },
+			{ id: "give_speed", label: "👟 +6 Velocidad" },
+			{ id: "add_time", label: "⏱️ +60s Reloj" },
+		],
+	},
+	{
+		title: "🌍 ENTORNO / SPAWNS",
+		headerColor: new Color3(0.9, 0.8, 0.2),
+		buttons: [
+			{ id: "spawn_boss", label: "👑 Invocar Boss" },
+			{ id: "spawn_chest", label: "📦 Spawn Cofre" },
+			{ id: "spawn_magnet", label: "🧲 Spawn Imán" },
+			{ id: "kill_all_enemies", label: "💥 Limpiar Arena" },
+		],
+	},
 ];
 
-debugButtons.forEach((btnInfo) => {
-	const b = new Instance("TextButton");
-	b.Size = new UDim2(0.9, 0, 0, 32);
-	b.BackgroundColor3 = new Color3(0.2, 0.24, 0.32);
-	b.Font = Enum.Font.FredokaOne;
-	b.Text = btnInfo.label;
-	b.TextColor3 = new Color3(1, 1, 1);
-	b.TextSize = 13;
-	b.Parent = debugPanel;
+debugCategories.forEach((cat) => {
+	const col = new Instance("Frame");
+	col.Size = new UDim2(0.31, 0, 1, 0);
+	col.BackgroundColor3 = new Color3(0.12, 0.14, 0.2);
+	col.BorderSizePixel = 0;
+	col.Parent = columnsContainer;
 
-	const bCorner = new Instance("UICorner");
-	bCorner.CornerRadius = new UDim(0, 6);
-	bCorner.Parent = b;
+	const cCorner = new Instance("UICorner");
+	cCorner.CornerRadius = new UDim(0, 6);
+	cCorner.Parent = col;
 
-	b.MouseButton1Click.Connect(() => {
-		if (!debugActionEvent) {
-			const net = Workspace.FindFirstChild("Network") as Folder;
-			if (net) debugActionEvent = net.FindFirstChild("DebugAction") as RemoteEvent;
-		}
-		debugActionEvent?.FireServer(btnInfo.id);
+	const cLayout = new Instance("UIListLayout");
+	cLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center;
+	cLayout.Padding = new UDim(0, 6);
+	cLayout.Parent = col;
+
+	const header = new Instance("TextLabel");
+	header.Size = new UDim2(1, 0, 0, 26);
+	header.BackgroundTransparency = 1;
+	header.Font = Enum.Font.FredokaOne;
+	header.Text = cat.title;
+	header.TextColor3 = cat.headerColor;
+	header.TextSize = 13;
+	header.Parent = col;
+
+	cat.buttons.forEach((btnInfo) => {
+		const b = new Instance("TextButton");
+		b.Size = new UDim2(0.9, 0, 0, 36);
+		b.BackgroundColor3 = new Color3(0.18, 0.22, 0.3);
+		b.Font = Enum.Font.FredokaOne;
+		b.Text = btnInfo.label;
+		b.TextColor3 = new Color3(1, 1, 1);
+		b.TextSize = 12;
+		b.Parent = col;
+
+		const bCorner = new Instance("UICorner");
+		bCorner.CornerRadius = new UDim(0, 5);
+		bCorner.Parent = b;
+
+		b.MouseButton1Click.Connect(() => {
+			if (!debugActionEvent) {
+				const net = Workspace.FindFirstChild("Network") as Folder;
+				if (net) debugActionEvent = net.FindFirstChild("DebugAction") as RemoteEvent;
+			}
+			debugActionEvent?.FireServer(btnInfo.id);
+		});
 	});
 });
 
@@ -398,22 +447,19 @@ btnCorner.CornerRadius = new UDim(0, 8);
 btnCorner.Parent = restartBtn;
 
 restartBtn.MouseButton1Click.Connect(() => {
-	// Reaparecer al jugador con salud completa
+	// Reaparecer al jugador con salud completa y resetear partida
 	gameOverGui.Enabled = false;
 	isGameOver = false;
+	isClientPaused = false;
 	startTime = os.clock();
 	enemiesDefeatedCount = 0;
 
-	const char = player.Character;
-	const hum = char?.FindFirstChildOfClass("Humanoid");
-	if (hum) {
-		hum.Health = hum.MaxHealth;
+	// Avisar al servidor para limpiar todos los enemigos, orbes hostiles y gemas
+	if (!restartGameEvent) {
+		const net = Workspace.FindFirstChild("Network") as Folder;
+		if (net) restartGameEvent = net.FindFirstChild("RestartGame") as RemoteEvent;
 	}
-	// Teleportar a la base
-	const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
-	if (hrp) {
-		hrp.CFrame = new CFrame(0, 3, 0);
-	}
+	restartGameEvent?.FireServer();
 });
 
 // Detectar muerte del jugador para mostrar Game Over y barra de salud

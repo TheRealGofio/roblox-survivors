@@ -111,6 +111,13 @@ if (!debugActionEvent) {
 	debugActionEvent.Parent = networkFolder;
 }
 
+let restartGameEvent = networkFolder.FindFirstChild("RestartGame") as RemoteEvent;
+if (!restartGameEvent) {
+	restartGameEvent = new Instance("RemoteEvent");
+	restartGameEvent.Name = "RestartGame";
+	restartGameEvent.Parent = networkFolder;
+}
+
 // 4. Función generadora de Gemas (Cristales de EXP)
 function spawnExpGem(position: Vector3, expValue = 10) {
 	const gem = new Instance("Part");
@@ -514,6 +521,70 @@ debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
 	} else if (action === "give_speed") {
 		const hum = char?.FindFirstChildOfClass("Humanoid");
 		if (hum) hum.WalkSpeed += 6;
+	}
+});
+
+// Manejo de reinicio completo de partida
+restartGameEvent.OnServerEvent.Connect((player) => {
+	print(`[r-survivors] Reiniciando partida por completo para ${player.Name}...`);
+
+	// 1. Limpiar todos los enemigos activos
+	for (const enemy of enemiesFolder.GetChildren()) {
+		enemy.Destroy();
+	}
+
+	// 2. Limpiar todos los proyectiles enemigos
+	for (const proj of enemyProjectilesFolder.GetChildren()) {
+		proj.Destroy();
+	}
+
+	// 3. Limpiar todas las gemas y drops del mapa
+	for (const drop of dropsFolder.GetChildren()) {
+		drop.Destroy();
+	}
+
+	// 4. Resetear tiempo de juego y banderas
+	gameElapsedTime = 0;
+	bossSpawned = false;
+	isGamePaused = false;
+
+	// 5. Resetear stats e inventario del jugador
+	const leaderstats = player.FindFirstChild("leaderstats") as Folder;
+	if (leaderstats) {
+		const lvl = leaderstats.FindFirstChild("Level") as IntValue;
+		if (lvl) lvl.Value = 1;
+		const exp = leaderstats.FindFirstChild("EXP") as NumberValue;
+		if (exp) exp.Value = 0;
+	}
+
+	const inventory = player.FindFirstChild("Inventory") as Folder;
+	if (inventory) {
+		const b = inventory.FindFirstChild("void_boomerang") as IntValue;
+		if (b) b.Value = 1;
+		const p = inventory.FindFirstChild("plasma_blaster") as IntValue;
+		if (p) p.Value = 0;
+		const o = inventory.FindFirstChild("chrono_orbits") as IntValue;
+		if (o) o.Value = 0;
+		const n = inventory.FindFirstChild("nova_beam") as IntValue;
+		if (n) n.Value = 0;
+		const sp = inventory.FindFirstChild("speed_bonus") as NumberValue;
+		if (sp) sp.Value = 0;
+		const hp = inventory.FindFirstChild("max_hp_bonus") as NumberValue;
+		if (hp) hp.Value = 0;
+	}
+
+	// 6. Restaurar personaje
+	const char = player.Character;
+	const hum = char?.FindFirstChildOfClass("Humanoid");
+	if (hum) {
+		hum.MaxHealth = 100;
+		hum.Health = 100;
+		hum.WalkSpeed = 16;
+	}
+
+	const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+	if (hrp) {
+		hrp.CFrame = new CFrame(0, 3, 0);
 	}
 });
 

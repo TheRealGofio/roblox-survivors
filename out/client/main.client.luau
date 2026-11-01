@@ -197,15 +197,16 @@ local levelUpEvent = if networkFolder then (networkFolder:WaitForChild("LevelUp"
 local selectUpgradeEvent = if networkFolder then (networkFolder:WaitForChild("SelectUpgrade", 5)) else nil
 local bossAlertEvent = if networkFolder then (networkFolder:WaitForChild("BossAlert", 5)) else nil
 local debugActionEvent = if networkFolder then (networkFolder:WaitForChild("DebugAction", 5)) else nil
--- Panel de Debug Plegable (Tecla F2 o Botón "DEBUG" en pantalla)
+local restartGameEvent = if networkFolder then (networkFolder:WaitForChild("RestartGame", 5)) else nil
+-- Panel de Debug Plegable Organizado por Categorías (F2 o Botón)
 local debugGui = Instance.new("ScreenGui")
 debugGui.Name = "DebugGui"
 debugGui.ResetOnSpawn = false
 debugGui.Parent = playerGui
 local debugToggleBtn = Instance.new("TextButton")
 debugToggleBtn.Name = "DebugToggle"
-debugToggleBtn.Size = UDim2.new(0, 90, 0, 30)
-debugToggleBtn.Position = UDim2.new(0.98, -90, 0.02, 0)
+debugToggleBtn.Size = UDim2.new(0, 95, 0, 30)
+debugToggleBtn.Position = UDim2.new(0.98, -95, 0.02, 0)
 debugToggleBtn.BackgroundColor3 = Color3.new(0.18, 0.2, 0.28)
 debugToggleBtn.Font = Enum.Font.FredokaOne
 debugToggleBtn.Text = "🛠️ DEBUG"
@@ -217,9 +218,9 @@ dbCorner.CornerRadius = UDim.new(0, 6)
 dbCorner.Parent = debugToggleBtn
 local debugPanel = Instance.new("Frame")
 debugPanel.Name = "DebugPanel"
-debugPanel.Size = UDim2.new(0, 220, 0, 500)
-debugPanel.Position = UDim2.new(0.98, -220, 0.07, 0)
-debugPanel.BackgroundColor3 = Color3.new(0.1, 0.12, 0.16)
+debugPanel.Size = UDim2.new(0, 480, 0, 260)
+debugPanel.Position = UDim2.new(0.98, -480, 0.065, 0)
+debugPanel.BackgroundColor3 = Color3.new(0.08, 0.1, 0.14)
 debugPanel.BorderSizePixel = 0
 debugPanel.Visible = false
 debugPanel.Parent = debugGui
@@ -230,79 +231,122 @@ local dpStroke = Instance.new("UIStroke")
 dpStroke.Color = Color3.new(1, 0.85, 0.2)
 dpStroke.Thickness = 1.5
 dpStroke.Parent = debugPanel
-local dpLayout = Instance.new("UIListLayout")
-dpLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-dpLayout.Padding = UDim.new(0, 6)
-dpLayout.Parent = debugPanel
-local dpPadding = Instance.new("UIPadding")
-dpPadding.PaddingTop = UDim.new(0, 8)
-dpPadding.PaddingBottom = UDim.new(0, 8)
-dpPadding.Parent = debugPanel
-local debugButtons = { {
-	id = "instant_level_up",
-	label = "⭐ Subir de Nivel",
+local columnsContainer = Instance.new("Frame")
+columnsContainer.Size = UDim2.new(1, -16, 1, -16)
+columnsContainer.Position = UDim2.new(0, 8, 0, 8)
+columnsContainer.BackgroundTransparency = 1
+columnsContainer.Parent = debugPanel
+local columnsLayout = Instance.new("UIListLayout")
+columnsLayout.FillDirection = Enum.FillDirection.Horizontal
+columnsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+columnsLayout.Padding = UDim.new(0, 10)
+columnsLayout.Parent = columnsContainer
+-- 3 Categorías: Armas, Pasivas y Entorno/General
+local debugCategories = { {
+	title = "⚔️ ARMAS",
+	headerColor = Color3.new(0.95, 0.35, 0.2),
+	buttons = { {
+		id = "unlock_all_weapons",
+		label = "⚡ TODAS MÁX",
+	}, {
+		id = "give_nova",
+		label = "🔥 Rayo Nova",
+	}, {
+		id = "give_orbits",
+		label = "🪐 Órbitas Crono",
+	}, {
+		id = "give_plasma",
+		label = "🟣 Bláster Plasma",
+	} },
 }, {
-	id = "unlock_all_weapons",
-	label = "⚡ TODAS LAS ARMAS (MÁX)",
+	title = "✨ PASIVAS & STATS",
+	headerColor = Color3.new(0.2, 0.75, 0.95),
+	buttons = { {
+		id = "instant_level_up",
+		label = "⭐ Level Up (+1)",
+	}, {
+		id = "heal_player",
+		label = "❤️ Curar al 100%",
+	}, {
+		id = "give_speed",
+		label = "👟 +6 Velocidad",
+	}, {
+		id = "add_time",
+		label = "⏱️ +60s Reloj",
+	} },
 }, {
-	id = "give_nova",
-	label = "🔥 +1 Rayo Nova",
-}, {
-	id = "give_orbits",
-	label = "🪐 +1 Órbitas Crono",
-}, {
-	id = "give_plasma",
-	label = "🟣 +1 Bláster Plasma",
-}, {
-	id = "give_speed",
-	label = "👟 +6 Velocidad",
-}, {
-	id = "spawn_boss",
-	label = "👑 Invocar Boss",
-}, {
-	id = "spawn_chest",
-	label = "📦 Spawn Cofre",
-}, {
-	id = "spawn_magnet",
-	label = "🧲 Spawn Imán",
-}, {
-	id = "heal_player",
-	label = "❤️ Curar Jugador",
-}, {
-	id = "add_time",
-	label = "⏱️ +60s Partida",
-}, {
-	id = "kill_all_enemies",
-	label = "💥 Aniquilar Enemigos",
+	title = "🌍 ENTORNO / SPAWNS",
+	headerColor = Color3.new(0.9, 0.8, 0.2),
+	buttons = { {
+		id = "spawn_boss",
+		label = "👑 Invocar Boss",
+	}, {
+		id = "spawn_chest",
+		label = "📦 Spawn Cofre",
+	}, {
+		id = "spawn_magnet",
+		label = "🧲 Spawn Imán",
+	}, {
+		id = "kill_all_enemies",
+		label = "💥 Limpiar Arena",
+	} },
 } }
 -- ▼ ReadonlyArray.forEach ▼
-local _callback = function(btnInfo)
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(0.9, 0, 0, 32)
-	b.BackgroundColor3 = Color3.new(0.2, 0.24, 0.32)
-	b.Font = Enum.Font.FredokaOne
-	b.Text = btnInfo.label
-	b.TextColor3 = Color3.new(1, 1, 1)
-	b.TextSize = 13
-	b.Parent = debugPanel
-	local bCorner = Instance.new("UICorner")
-	bCorner.CornerRadius = UDim.new(0, 6)
-	bCorner.Parent = b
-	b.MouseButton1Click:Connect(function()
-		if not debugActionEvent then
-			local net = Workspace:FindFirstChild("Network")
-			if net then
-				debugActionEvent = net:FindFirstChild("DebugAction")
+local _callback = function(cat)
+	local col = Instance.new("Frame")
+	col.Size = UDim2.new(0.31, 0, 1, 0)
+	col.BackgroundColor3 = Color3.new(0.12, 0.14, 0.2)
+	col.BorderSizePixel = 0
+	col.Parent = columnsContainer
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(0, 6)
+	cCorner.Parent = col
+	local cLayout = Instance.new("UIListLayout")
+	cLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	cLayout.Padding = UDim.new(0, 6)
+	cLayout.Parent = col
+	local header = Instance.new("TextLabel")
+	header.Size = UDim2.new(1, 0, 0, 26)
+	header.BackgroundTransparency = 1
+	header.Font = Enum.Font.FredokaOne
+	header.Text = cat.title
+	header.TextColor3 = cat.headerColor
+	header.TextSize = 13
+	header.Parent = col
+	local _exp = cat.buttons
+	-- ▼ ReadonlyArray.forEach ▼
+	local _callback_1 = function(btnInfo)
+		local b = Instance.new("TextButton")
+		b.Size = UDim2.new(0.9, 0, 0, 36)
+		b.BackgroundColor3 = Color3.new(0.18, 0.22, 0.3)
+		b.Font = Enum.Font.FredokaOne
+		b.Text = btnInfo.label
+		b.TextColor3 = Color3.new(1, 1, 1)
+		b.TextSize = 12
+		b.Parent = col
+		local bCorner = Instance.new("UICorner")
+		bCorner.CornerRadius = UDim.new(0, 5)
+		bCorner.Parent = b
+		b.MouseButton1Click:Connect(function()
+			if not debugActionEvent then
+				local net = Workspace:FindFirstChild("Network")
+				if net then
+					debugActionEvent = net:FindFirstChild("DebugAction")
+				end
 			end
-		end
-		local _result = debugActionEvent
-		if _result ~= nil then
-			_result:FireServer(btnInfo.id)
-		end
-	end)
+			local _result = debugActionEvent
+			if _result ~= nil then
+				_result:FireServer(btnInfo.id)
+			end
+		end)
+	end
+	for _k, _v in _exp do
+		_callback_1(_v, _k - 1, _exp)
+	end
+	-- ▲ ReadonlyArray.forEach ▲
 end
-for _k, _v in debugButtons do
-	_callback(_v, _k - 1, debugButtons)
+for _k, _v in debugCategories do
+	_callback(_v, _k - 1, debugCategories)
 end
 -- ▲ ReadonlyArray.forEach ▲
 debugToggleBtn.MouseButton1Click:Connect(function()
@@ -418,28 +462,22 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 8)
 btnCorner.Parent = restartBtn
 restartBtn.MouseButton1Click:Connect(function()
-	-- Reaparecer al jugador con salud completa
+	-- Reaparecer al jugador con salud completa y resetear partida
 	gameOverGui.Enabled = false
 	isGameOver = false
+	isClientPaused = false
 	startTime = os.clock()
 	enemiesDefeatedCount = 0
-	local char = player.Character
-	local _hum = char
-	if _hum ~= nil then
-		_hum = _hum:FindFirstChildOfClass("Humanoid")
+	-- Avisar al servidor para limpiar todos los enemigos, orbes hostiles y gemas
+	if not restartGameEvent then
+		local net = Workspace:FindFirstChild("Network")
+		if net then
+			restartGameEvent = net:FindFirstChild("RestartGame")
+		end
 	end
-	local hum = _hum
-	if hum then
-		hum.Health = hum.MaxHealth
-	end
-	-- Teleportar a la base
-	local _result = char
+	local _result = restartGameEvent
 	if _result ~= nil then
-		_result = _result:FindFirstChild("HumanoidRootPart")
-	end
-	local hrp = _result
-	if hrp then
-		hrp.CFrame = CFrame.new(0, 3, 0)
+		_result:FireServer()
 	end
 end)
 -- Detectar muerte del jugador para mostrar Game Over y barra de salud
