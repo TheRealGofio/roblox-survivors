@@ -50,6 +50,21 @@ local ENEMY_TYPES = {
 		shootCooldown = 3.2,
 		projectileSpeed = 28,
 	},
+	overlord_boss = {
+		id = "overlord_boss",
+		name = "SEÑOR DEL VACÍO (BOSS)",
+		behavior = "boss",
+		hp = 750,
+		speed = 7.0,
+		damage = 28,
+		xpValue = 150,
+		size = Vector3.new(7.5, 7.5, 7.5),
+		color = Color3.new(1.0, 0.1, 0.1),
+		material = Enum.Material.Neon,
+		shootCooldown = 2.5,
+		projectileSpeed = 30,
+		isBoss = true,
+	},
 }
 return {
 	ENEMY_TYPES = ENEMY_TYPES,

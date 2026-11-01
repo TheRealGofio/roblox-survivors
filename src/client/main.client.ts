@@ -193,6 +193,41 @@ let damageEvent = networkFolder ? (networkFolder.WaitForChild("DamageEnemy", 5) 
 let collectGemEvent = networkFolder ? (networkFolder.WaitForChild("CollectGem", 5) as RemoteEvent) : undefined;
 let levelUpEvent = networkFolder ? (networkFolder.WaitForChild("LevelUp", 5) as RemoteEvent) : undefined;
 let selectUpgradeEvent = networkFolder ? (networkFolder.WaitForChild("SelectUpgrade", 5) as RemoteEvent) : undefined;
+let bossAlertEvent = networkFolder ? (networkFolder.WaitForChild("BossAlert", 5) as RemoteEvent) : undefined;
+
+// Banner Alerta de Boss en Pantalla
+const bossBanner = new Instance("TextLabel");
+bossBanner.Name = "BossBanner";
+bossBanner.Size = new UDim2(1, 0, 0, 60);
+bossBanner.Position = new UDim2(0, 0, 0.12, 0);
+bossBanner.BackgroundTransparency = 1;
+bossBanner.Font = Enum.Font.FredokaOne;
+bossBanner.Text = "⚠️ ¡SEÑOR DEL VACÍO HA DESPERTADO! ⚠️";
+bossBanner.TextSize = 28;
+bossBanner.TextColor3 = new Color3(1.0, 0.15, 0.2); // Rojo alarma
+bossBanner.TextStrokeTransparency = 0;
+bossBanner.Visible = false;
+bossBanner.Parent = hudScreen;
+
+const connectBossAlert = (ev?: RemoteEvent) => {
+	ev?.OnClientEvent.Connect((msg: unknown) => {
+		const text = typeOf(msg) === "string" ? (msg as string) : "¡BOSS INMINENTE!";
+		bossBanner.Text = `⚠️ ${text} ⚠️`;
+		bossBanner.Visible = true;
+		SoundManager.playSound("levelUp", 1.0, 0.6); // Tono grave amenazante
+		task.delay(5, () => {
+			bossBanner.Visible = false;
+		});
+	});
+};
+if (bossAlertEvent) connectBossAlert(bossAlertEvent);
+else {
+	task.spawn(() => {
+		const net = Workspace.WaitForChild("Network", 10) as Folder;
+		const ev = net?.WaitForChild("BossAlert", 5) as RemoteEvent;
+		connectBossAlert(ev);
+	});
+}
 
 // 3. UI de Game Over
 const gameOverGui = new Instance("ScreenGui");

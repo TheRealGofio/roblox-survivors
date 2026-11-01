@@ -12,6 +12,7 @@ EnvironmentManager.buildArenaEnvironment();
 // Estado global de juego y tiempo de partida
 let isGamePaused = false;
 let gameElapsedTime = 0;
+let bossSpawned = false;
 
 // 1. Crear el suelo de la arena física (Baseplate) si no existe
 let baseplate = Workspace.FindFirstChild("Baseplate") as BasePart;
@@ -96,6 +97,13 @@ if (!selectUpgradeEvent) {
 	selectUpgradeEvent.Parent = networkFolder;
 }
 
+let bossAlertEvent = networkFolder.FindFirstChild("BossAlert") as RemoteEvent;
+if (!bossAlertEvent) {
+	bossAlertEvent = new Instance("RemoteEvent");
+	bossAlertEvent.Name = "BossAlert";
+	bossAlertEvent.Parent = networkFolder;
+}
+
 // 4. Función generadora de Gemas (Cristales de EXP)
 function spawnExpGem(position: Vector3, expValue = 10) {
 	const gem = new Instance("Part");
@@ -103,13 +111,18 @@ function spawnExpGem(position: Vector3, expValue = 10) {
 	gem.Shape = Enum.PartType.Ball;
 	gem.Size = new Vector3(1.2, 1.2, 1.2);
 	gem.Material = Enum.Material.Neon;
-	// Gemas grandes para los tanques
-	if (expValue >= 30) {
+
+	if (expValue >= 100) {
+		// Gema colosal del Boss
+		gem.Size = new Vector3(3.0, 3.0, 3.0);
+		gem.Color = new Color3(1.0, 0.2, 0.85); // Magenta cósmico épico
+	} else if (expValue >= 30) {
 		gem.Size = new Vector3(1.8, 1.8, 1.8);
-		gem.Color = new Color3(0.95, 0.85, 0.1); // Dorado para experiencia valiosa
+		gem.Color = new Color3(0.95, 0.85, 0.1); // Dorado
 	} else {
 		gem.Color = new Color3(0.2, 0.9, 0.35); // Verde esmeralda
 	}
+
 	gem.CanCollide = false;
 	gem.Anchored = true;
 	gem.Position = position.add(new Vector3(0, 0.6, 0));
@@ -119,14 +132,78 @@ function spawnExpGem(position: Vector3, expValue = 10) {
 
 	const light = new Instance("PointLight");
 	light.Color = gem.Color;
-	light.Range = 6;
-	light.Brightness = 1.2;
+	light.Range = expValue >= 100 ? 16 : 6;
+	light.Brightness = 1.6;
 	light.Parent = gem;
 
-	Debris.AddItem(gem, 45);
+	Debris.AddItem(gem, 55);
 }
 
-// 5. Manejo del daño a enemigos recibido desde el cliente
+// 5. Spawner de Ítems Especiales (Cofre de Suministros e Imán de Gemas)
+function spawnMagnetItem(pos: Vector3) {
+	const magnet = new Instance("Part");
+	magnet.Name = "VacuumMagnet";
+	magnet.Shape = Enum.PartType.Cylinder;
+	magnet.Size = new Vector3(1.5, 2.2, 2.2);
+	magnet.CFrame = new CFrame(pos.add(new Vector3(0, 1.2, 0))).mul(CFrame.Angles(0, 0, math.rad(90)));
+	magnet.Color = new Color3(0.2, 0.8, 1.0); // Azul magnético
+	magnet.Material = Enum.Material.Neon;
+	magnet.Anchored = true;
+	magnet.CanCollide = false;
+	magnet.SetAttribute("IsSpecialDrop", "magnet");
+	magnet.SetAttribute("Collected", false);
+	magnet.Parent = dropsFolder;
+
+	const light = new Instance("PointLight");
+	light.Color = magnet.Color;
+	light.Range = 12;
+	light.Brightness = 2;
+	light.Parent = magnet;
+
+	Debris.AddItem(magnet, 40);
+}
+
+function spawnSupplyChest(pos: Vector3) {
+	const chest = new Instance("Part");
+	chest.Name = "SupplyChest";
+	chest.Size = new Vector3(2.8, 2.2, 2.2);
+	chest.Position = pos.add(new Vector3(0, 1.1, 0));
+	chest.Color = new Color3(1.0, 0.75, 0.1); // Cofre dorado
+	chest.Material = Enum.Material.Neon;
+	chest.Anchored = true;
+	chest.CanCollide = false;
+	chest.SetAttribute("IsSpecialDrop", "chest");
+	chest.SetAttribute("Collected", false);
+	chest.Parent = dropsFolder;
+
+	const light = new Instance("PointLight");
+	light.Color = chest.Color;
+	light.Range = 14;
+	light.Brightness = 2.5;
+	light.Parent = chest;
+
+	Debris.AddItem(chest, 50);
+}
+
+// Spawner periódico de Drops de Suministro (cada 35 segundos)
+task.spawn(() => {
+	while (true) {
+		task.wait(35);
+		if (isGamePaused) continue;
+
+		const angle = math.random() * math.pi * 2;
+		const dist = 15 + math.random() * 30;
+		const dropPos = new Vector3(math.cos(angle) * dist, 0, math.sin(angle) * dist);
+
+		if (math.random() < 0.5) {
+			spawnMagnetItem(dropPos);
+		} else {
+			spawnSupplyChest(dropPos);
+		}
+	}
+});
+
+// 6. Manejo del daño a enemigos recibido desde el cliente
 damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDirArg) => {
 	if (isGamePaused) return;
 
@@ -141,10 +218,11 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 
 		if (knockbackDir) {
 			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+			const isBoss = enemy.GetAttribute("Behavior") === "boss";
 			const isTank = enemy.GetAttribute("Behavior") === "tank";
-			// Los brutos gigantes tienen gran resistencia al knockback
-			const knockbackForce = isTank ? 5 : 18;
-			if (bodyVel) {
+			// Los jefes son inamovibles (inmunes a knockback), los tanques tienen alta resistencia
+			const knockbackForce = isBoss ? 0 : isTank ? 5 : 18;
+			if (bodyVel && knockbackForce > 0) {
 				bodyVel.Velocity = knockbackDir.mul(knockbackForce).add(new Vector3(0, isTank ? 1 : 4, 0));
 				enemy.SetAttribute("InKnockback", true);
 				task.delay(0.22, () => {
@@ -158,29 +236,78 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 		if (newHp <= 0) {
 			const deathPos = enemy.Position;
 			const xpReward = (enemy.GetAttribute("XpReward") as number) ?? 15;
-			spawnExpGem(deathPos, xpReward);
+			const isBoss = enemy.GetAttribute("Behavior") === "boss";
+
+			// Si muere el Boss, genera el gran cofre + gema cósmica
+			if (isBoss) {
+				spawnSupplyChest(deathPos);
+				spawnExpGem(deathPos.add(new Vector3(2, 0, 0)), 150);
+				spawnMagnetItem(deathPos.add(new Vector3(-2, 0, 0)));
+			} else {
+				spawnExpGem(deathPos, xpReward);
+			}
 
 			enemy.CanCollide = false;
-			TweenService.Create(enemy, new TweenInfo(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			TweenService.Create(enemy, new TweenInfo(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Size: new Vector3(0.1, 0.1, 0.1),
 				Transparency: 1,
 			}).Play();
 
-			task.delay(0.18, () => {
+			task.delay(0.2, () => {
 				enemy.Destroy();
 			});
 		}
 	}
 });
 
-// 6. Manejo de recolección de gemas y Level Up
-collectGemEvent.OnServerEvent.Connect((player, gemArg) => {
+// 7. Manejo de recolección de gemas, cofres e imán
+collectGemEvent.OnServerEvent.Connect((player, itemArg) => {
 	if (isGamePaused) return;
 
-	const gem = gemArg as Instance;
-	if (gem && gem.IsDescendantOf(dropsFolder) && gem.IsA("BasePart")) {
-		const exp = (gem.GetAttribute("ExpValue") as number) ?? 10;
-		gem.Destroy();
+	const item = itemArg as Instance;
+	if (item && item.IsDescendantOf(dropsFolder) && item.IsA("BasePart")) {
+		const specialType = item.GetAttribute("IsSpecialDrop") as string | undefined;
+
+		// Efecto Imán / Vórtice
+		if (specialType === "magnet") {
+			item.Destroy();
+			const char = player.Character;
+			const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+			if (hrp) {
+				// Atraer instantáneamente todas las gemas del mapa hacia el jugador
+				for (const gem of dropsFolder.GetChildren()) {
+					if (gem.IsA("BasePart") && gem.GetAttribute("ExpValue") !== undefined) {
+						gem.Position = hrp.Position;
+					}
+				}
+			}
+			return;
+		}
+
+		// Efecto Cofre de Suministros (Nivel gratis directo)
+		if (specialType === "chest") {
+			item.Destroy();
+			const leaderstats = player.FindFirstChild("leaderstats") as Folder;
+			if (leaderstats) {
+				const levelStat = leaderstats.FindFirstChild("Level") as IntValue;
+				if (levelStat) {
+					levelStat.Value += 1;
+					isGamePaused = true;
+					for (const enemy of enemiesFolder.GetChildren()) {
+						if (enemy.IsA("BasePart")) {
+							const vel = enemy.FindFirstChildOfClass("BodyVelocity");
+							if (vel) vel.Velocity = new Vector3(0, 0, 0);
+						}
+					}
+					levelUpEvent.FireClient(player, levelStat.Value);
+				}
+			}
+			return;
+		}
+
+		// Gema normal
+		const exp = (item.GetAttribute("ExpValue") as number) ?? 10;
+		item.Destroy();
 
 		const leaderstats = player.FindFirstChild("leaderstats") as Folder;
 		if (leaderstats) {
@@ -209,7 +336,7 @@ collectGemEvent.OnServerEvent.Connect((player, gemArg) => {
 	}
 });
 
-// 7. Configuración de estadísticas y estado inicial del jugador
+// 8. Configuración de estadísticas y estado inicial del jugador
 Players.PlayerAdded.Connect((plr) => {
 	const leaderstats = new Instance("Folder");
 	leaderstats.Name = "leaderstats";
@@ -241,7 +368,7 @@ Players.PlayerAdded.Connect((plr) => {
 
 	const orbitsLvl = new Instance("IntValue");
 	orbitsLvl.Name = "chrono_orbits";
-	orbitsLvl.Value = 0; // Desbloqueable en Level Up
+	orbitsLvl.Value = 0;
 	orbitsLvl.Parent = inventory;
 
 	const maxHpBonus = new Instance("NumberValue");
@@ -255,7 +382,7 @@ Players.PlayerAdded.Connect((plr) => {
 	moveSpeedBonus.Parent = inventory;
 });
 
-// 8. Manejo de elección de mejoras y REANUDACIÓN
+// 9. Manejo de elección de mejoras y REANUDACIÓN
 selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 	const upgradeId = upgradeIdArg as string;
 	const inventory = player.FindFirstChild("Inventory") as Folder;
@@ -298,7 +425,7 @@ selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 	print("[r-survivors] Juego reanudado.");
 });
 
-// 9. Función para crear cualquier enemigo de ENEMY_TYPES
+// 10. Función para crear cualquier enemigo de ENEMY_TYPES
 function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	const enemy = new Instance("Part");
 	enemy.Name = `${config.name}_${index}`;
@@ -323,7 +450,6 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.Parent = enemiesFolder;
 
 	const bodyVelocity = new Instance("BodyVelocity");
-	// Fuerza proporcional a la masa para que los Goliat se muevan con soltura
 	const massMultiplier = math.max(1, enemy.GetMass());
 	bodyVelocity.MaxForce = new Vector3(massMultiplier * 200, 0, massMultiplier * 200);
 	bodyVelocity.Velocity = new Vector3(0, 0, 0);
@@ -347,7 +473,7 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	return enemy;
 }
 
-// 10. Spawner inteligente con escalado de oleadas
+// 11. Spawner inteligente con escalado de oleadas y BOSS EVENT
 task.spawn(() => {
 	let enemyIndex = 0;
 	while (true) {
@@ -356,27 +482,32 @@ task.spawn(() => {
 
 		gameElapsedTime += 1.5;
 
+		// BOSS EVENT: Minuto 3 (180 segundos)
+		if (gameElapsedTime >= 180 && !bossSpawned) {
+			bossSpawned = true;
+			print("[BOSS EVENT] ¡El Señor del Vacío ha despertado!");
+			bossAlertEvent.FireAllClients("¡SEÑOR DEL VACÍO HA DESPERTADO!");
+
+			const bossPart = createEnemyInstance(ENEMY_TYPES.overlord_boss, 999);
+			bossPart.Position = new Vector3(0, 4.5, 60); // Spawnea cerca de la arena
+		}
+
 		const currentCount = enemiesFolder.GetChildren().size();
 		const maxCapacity = math.min(50, 20 + math.floor(gameElapsedTime / 20) * 5);
 
 		if (currentCount < maxCapacity) {
 			enemyIndex++;
 
-			// Selección probabilística según tiempo de supervivencia
 			let chosenConfig = ENEMY_TYPES.crawler;
 			const roll = math.random();
 
 			if (gameElapsedTime > 60 && roll < 0.15) {
-				// Bruto Goliat (Tanque grande tras 1 minuto)
 				chosenConfig = ENEMY_TYPES.brute;
 			} else if (gameElapsedTime > 35 && roll < 0.35) {
-				// Centinela Tirador
 				chosenConfig = ENEMY_TYPES.turret;
 			} else if (gameElapsedTime > 15 && roll < 0.6) {
-				// Deslizador rápido
 				chosenConfig = ENEMY_TYPES.skimmer;
 			} else {
-				// Crawler básico
 				chosenConfig = ENEMY_TYPES.crawler;
 			}
 
@@ -385,7 +516,7 @@ task.spawn(() => {
 	}
 });
 
-// 11. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter)
+// 12. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter, Boss)
 RunService.Heartbeat.Connect(() => {
 	if (isGamePaused) {
 		for (const enemy of enemiesFolder.GetChildren()) {
@@ -408,10 +539,8 @@ RunService.Heartbeat.Connect(() => {
 			const behavior = enemy.GetAttribute("Behavior") as string;
 			const baseSpeed = (enemy.GetAttribute("Speed") as number) ?? 8.0;
 
-			// Encontrar jugador más cercano
 			let closestDist = 99999;
 			let targetPos: Vector3 | undefined = undefined;
-			let targetPlayer: Player | undefined = undefined;
 
 			for (const p of allPlayers) {
 				const char = p.Character;
@@ -422,7 +551,6 @@ RunService.Heartbeat.Connect(() => {
 					if (dist < closestDist) {
 						closestDist = dist;
 						targetPos = hrp.Position;
-						targetPlayer = p;
 					}
 				}
 			}
@@ -431,33 +559,37 @@ RunService.Heartbeat.Connect(() => {
 				const dir = targetPos.sub(enemy.Position);
 				const dirHorizontal = new Vector3(dir.X, 0, dir.Z).Unit;
 
-				// Comportamiento Shooter (Centinela)
-				if (behavior === "shooter") {
-					// Mantiene distancia óptima de disparo (20 a 28 studs)
+				if (behavior === "boss") {
+					// BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles
+					bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
+
+					const lastShot = (enemy.GetAttribute("LastShotTime") as number) ?? 0;
+					if (currentTime - lastShot >= 2.5) {
+						enemy.SetAttribute("LastShotTime", currentTime);
+						// Ráfaga en trío
+						fireEnemyProjectile(enemy.Position, targetPos, 18);
+						task.delay(0.2, () => fireEnemyProjectile(enemy.Position, targetPos.add(new Vector3(4, 0, 4)), 18));
+						task.delay(0.4, () => fireEnemyProjectile(enemy.Position, targetPos.add(new Vector3(-4, 0, -4)), 18));
+					}
+				} else if (behavior === "shooter") {
 					if (closestDist < 18) {
-						// Retroceder si el jugador se acerca demasiado
 						bodyVel.Velocity = dirHorizontal.mul(-baseSpeed * 0.8);
 					} else if (closestDist > 28) {
-						// Acercarse si está lejos
 						bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
 					} else {
-						// Orbitar lateralmente
 						const perpDir = new Vector3(-dirHorizontal.Z, 0, dirHorizontal.X);
 						bodyVel.Velocity = perpDir.mul(baseSpeed * 0.6);
 					}
 
-					// Disparar proyectil al jugador
 					const lastShot = (enemy.GetAttribute("LastShotTime") as number) ?? 0;
 					if (currentTime - lastShot >= 3.0) {
 						enemy.SetAttribute("LastShotTime", currentTime);
 						fireEnemyProjectile(enemy.Position, targetPos, 14);
 					}
 				} else {
-					// Persecución directa (Melee, Fast, Tank)
 					bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
 				}
 			} else {
-				// Sin objetivos vivos: ir al centro
 				const dirToCenter = new Vector3(0, 0, 0).sub(enemy.Position).Unit;
 				bodyVel.Velocity = new Vector3(dirToCenter.X * 5, 0, dirToCenter.Z * 5);
 			}
@@ -465,29 +597,29 @@ RunService.Heartbeat.Connect(() => {
 	}
 });
 
-// 12. Proyectiles hostiles de los Centinelas (Turret)
+// 13. Proyectiles hostiles de los Centinelas y Boss
 function fireEnemyProjectile(startPos: Vector3, targetPos: Vector3, damage: number) {
 	const proj = new Instance("Part");
-	proj.Name = "TurretOrb";
+	proj.Name = "EnemyOrb";
 	proj.Shape = Enum.PartType.Ball;
-	proj.Size = new Vector3(1.3, 1.3, 1.3);
-	proj.Color = new Color3(0.05, 0.85, 1.0); // Cian eléctrico brillante
+	proj.Size = new Vector3(1.4, 1.4, 1.4);
+	proj.Color = new Color3(1.0, 0.15, 0.2); // Rojo cósmico
 	proj.Material = Enum.Material.Neon;
 	proj.CanCollide = false;
 	proj.Anchored = false;
-	proj.Position = startPos.add(new Vector3(0, 1.5, 0));
+	proj.Position = startPos.add(new Vector3(0, 2.0, 0));
 	proj.Parent = enemyProjectilesFolder;
 
 	const light = new Instance("PointLight");
 	light.Color = proj.Color;
-	light.Range = 6;
-	light.Brightness = 1.5;
+	light.Range = 8;
+	light.Brightness = 2;
 	light.Parent = proj;
 
 	const dir = targetPos.sub(proj.Position).Unit;
 	const bodyVel = new Instance("BodyVelocity");
-	bodyVel.MaxForce = new Vector3(8000, 8000, 8000);
-	bodyVel.Velocity = dir.mul(26); // Velocidad del proyectil enemigo
+	bodyVel.MaxForce = new Vector3(10000, 10000, 10000);
+	bodyVel.Velocity = dir.mul(28);
 	bodyVel.Parent = proj;
 
 	let hit = false;

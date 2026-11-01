@@ -195,6 +195,48 @@ local damageEvent = if networkFolder then (networkFolder:WaitForChild("DamageEne
 local collectGemEvent = if networkFolder then (networkFolder:WaitForChild("CollectGem", 5)) else nil
 local levelUpEvent = if networkFolder then (networkFolder:WaitForChild("LevelUp", 5)) else nil
 local selectUpgradeEvent = if networkFolder then (networkFolder:WaitForChild("SelectUpgrade", 5)) else nil
+local bossAlertEvent = if networkFolder then (networkFolder:WaitForChild("BossAlert", 5)) else nil
+-- Banner Alerta de Boss en Pantalla
+local bossBanner = Instance.new("TextLabel")
+bossBanner.Name = "BossBanner"
+bossBanner.Size = UDim2.new(1, 0, 0, 60)
+bossBanner.Position = UDim2.new(0, 0, 0.12, 0)
+bossBanner.BackgroundTransparency = 1
+bossBanner.Font = Enum.Font.FredokaOne
+bossBanner.Text = "⚠️ ¡SEÑOR DEL VACÍO HA DESPERTADO! ⚠️"
+bossBanner.TextSize = 28
+bossBanner.TextColor3 = Color3.new(1.0, 0.15, 0.2)
+bossBanner.TextStrokeTransparency = 0
+bossBanner.Visible = false
+bossBanner.Parent = hudScreen
+local connectBossAlert = function(ev)
+	local _result = ev
+	if _result ~= nil then
+		_result = _result.OnClientEvent:Connect(function(msg)
+			local _msg = msg
+			local text = if typeof(_msg) == "string" then msg else "¡BOSS INMINENTE!"
+			bossBanner.Text = `⚠️ {text} ⚠️`
+			bossBanner.Visible = true
+			SoundManager.playSound("levelUp", 1.0, 0.6)
+			task.delay(5, function()
+				bossBanner.Visible = false
+			end)
+		end)
+	end
+end
+if bossAlertEvent then
+	connectBossAlert(bossAlertEvent)
+else
+	task.spawn(function()
+		local net = Workspace:WaitForChild("Network", 10)
+		local _result = net
+		if _result ~= nil then
+			_result = _result:WaitForChild("BossAlert", 5)
+		end
+		local ev = _result
+		connectBossAlert(ev)
+	end)
+end
 -- 3. UI de Game Over
 local gameOverGui = Instance.new("ScreenGui")
 gameOverGui.Name = "GameOverScreen"

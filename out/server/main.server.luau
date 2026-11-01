@@ -15,6 +15,7 @@ EnvironmentManager.buildArenaEnvironment()
 -- Estado global de juego y tiempo de partida
 local isGamePaused = false
 local gameElapsedTime = 0
+local bossSpawned = false
 -- 1. Crear el suelo de la arena física (Baseplate) si no existe
 local baseplate = Workspace:FindFirstChild("Baseplate")
 if not baseplate then
@@ -88,6 +89,12 @@ if not selectUpgradeEvent then
 	selectUpgradeEvent.Name = "SelectUpgrade"
 	selectUpgradeEvent.Parent = networkFolder
 end
+local bossAlertEvent = networkFolder:FindFirstChild("BossAlert")
+if not bossAlertEvent then
+	bossAlertEvent = Instance.new("RemoteEvent")
+	bossAlertEvent.Name = "BossAlert"
+	bossAlertEvent.Parent = networkFolder
+end
 -- 4. Función generadora de Gemas (Cristales de EXP)
 local function spawnExpGem(position, expValue)
 	if expValue == nil then
@@ -98,8 +105,11 @@ local function spawnExpGem(position, expValue)
 	gem.Shape = Enum.PartType.Ball
 	gem.Size = Vector3.new(1.2, 1.2, 1.2)
 	gem.Material = Enum.Material.Neon
-	-- Gemas grandes para los tanques
-	if expValue >= 30 then
+	if expValue >= 100 then
+		-- Gema colosal del Boss
+		gem.Size = Vector3.new(3.0, 3.0, 3.0)
+		gem.Color = Color3.new(1.0, 0.2, 0.85)
+	elseif expValue >= 30 then
 		gem.Size = Vector3.new(1.8, 1.8, 1.8)
 		gem.Color = Color3.new(0.95, 0.85, 0.1)
 	else
@@ -115,12 +125,75 @@ local function spawnExpGem(position, expValue)
 	gem.Parent = dropsFolder
 	local light = Instance.new("PointLight")
 	light.Color = gem.Color
-	light.Range = 6
-	light.Brightness = 1.2
+	light.Range = if expValue >= 100 then 16 else 6
+	light.Brightness = 1.6
 	light.Parent = gem
-	Debris:AddItem(gem, 45)
+	Debris:AddItem(gem, 55)
 end
--- 5. Manejo del daño a enemigos recibido desde el cliente
+-- 5. Spawner de Ítems Especiales (Cofre de Suministros e Imán de Gemas)
+local function spawnMagnetItem(pos)
+	local magnet = Instance.new("Part")
+	magnet.Name = "VacuumMagnet"
+	magnet.Shape = Enum.PartType.Cylinder
+	magnet.Size = Vector3.new(1.5, 2.2, 2.2)
+	local _pos = pos
+	local _vector3 = Vector3.new(0, 1.2, 0)
+	local _cFrame = CFrame.new(_pos + _vector3)
+	local _arg0 = CFrame.Angles(0, 0, math.rad(90))
+	magnet.CFrame = _cFrame * _arg0
+	magnet.Color = Color3.new(0.2, 0.8, 1.0)
+	magnet.Material = Enum.Material.Neon
+	magnet.Anchored = true
+	magnet.CanCollide = false
+	magnet:SetAttribute("IsSpecialDrop", "magnet")
+	magnet:SetAttribute("Collected", false)
+	magnet.Parent = dropsFolder
+	local light = Instance.new("PointLight")
+	light.Color = magnet.Color
+	light.Range = 12
+	light.Brightness = 2
+	light.Parent = magnet
+	Debris:AddItem(magnet, 40)
+end
+local function spawnSupplyChest(pos)
+	local chest = Instance.new("Part")
+	chest.Name = "SupplyChest"
+	chest.Size = Vector3.new(2.8, 2.2, 2.2)
+	local _pos = pos
+	local _vector3 = Vector3.new(0, 1.1, 0)
+	chest.Position = _pos + _vector3
+	chest.Color = Color3.new(1.0, 0.75, 0.1)
+	chest.Material = Enum.Material.Neon
+	chest.Anchored = true
+	chest.CanCollide = false
+	chest:SetAttribute("IsSpecialDrop", "chest")
+	chest:SetAttribute("Collected", false)
+	chest.Parent = dropsFolder
+	local light = Instance.new("PointLight")
+	light.Color = chest.Color
+	light.Range = 14
+	light.Brightness = 2.5
+	light.Parent = chest
+	Debris:AddItem(chest, 50)
+end
+-- Spawner periódico de Drops de Suministro (cada 35 segundos)
+task.spawn(function()
+	while true do
+		task.wait(35)
+		if isGamePaused then
+			continue
+		end
+		local angle = math.random() * math.pi * 2
+		local dist = 15 + math.random() * 30
+		local dropPos = Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
+		if math.random() < 0.5 then
+			spawnMagnetItem(dropPos)
+		else
+			spawnSupplyChest(dropPos)
+		end
+	end
+end)
+-- 6. Manejo del daño a enemigos recibido desde el cliente
 damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, knockbackDirArg)
 	if isGamePaused then
 		return nil
@@ -139,10 +212,11 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		enemy:SetAttribute("HP", newHp)
 		if knockbackDir then
 			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+			local isBoss = enemy:GetAttribute("Behavior") == "boss"
 			local isTank = enemy:GetAttribute("Behavior") == "tank"
-			-- Los brutos gigantes tienen gran resistencia al knockback
-			local knockbackForce = if isTank then 5 else 18
-			if bodyVel then
+			-- Los jefes son inamovibles (inmunes a knockback), los tanques tienen alta resistencia
+			local knockbackForce = if isBoss then 0 elseif isTank then 5 else 18
+			if bodyVel and knockbackForce > 0 then
 				local _exp = knockbackDir * knockbackForce
 				local _vector3 = Vector3.new(0, if isTank then 1 else 4, 0)
 				bodyVel.Velocity = _exp + _vector3
@@ -161,31 +235,84 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 				_condition_1 = 15
 			end
 			local xpReward = _condition_1
-			spawnExpGem(deathPos, xpReward)
+			local isBoss = enemy:GetAttribute("Behavior") == "boss"
+			-- Si muere el Boss, genera el gran cofre + gema cósmica
+			if isBoss then
+				spawnSupplyChest(deathPos)
+				local _vector3 = Vector3.new(2, 0, 0)
+				spawnExpGem(deathPos + _vector3, 150)
+				local _vector3_1 = Vector3.new(-2, 0, 0)
+				spawnMagnetItem(deathPos + _vector3_1)
+			else
+				spawnExpGem(deathPos, xpReward)
+			end
 			enemy.CanCollide = false
-			TweenService:Create(enemy, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			TweenService:Create(enemy, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Size = Vector3.new(0.1, 0.1, 0.1),
 				Transparency = 1,
 			}):Play()
-			task.delay(0.18, function()
+			task.delay(0.2, function()
 				enemy:Destroy()
 			end)
 		end
 	end
 end)
--- 6. Manejo de recolección de gemas y Level Up
-collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
+-- 7. Manejo de recolección de gemas, cofres e imán
+collectGemEvent.OnServerEvent:Connect(function(player, itemArg)
 	if isGamePaused then
 		return nil
 	end
-	local gem = gemArg
-	if gem and gem:IsDescendantOf(dropsFolder) and gem:IsA("BasePart") then
-		local _condition = (gem:GetAttribute("ExpValue"))
+	local item = itemArg
+	if item and item:IsDescendantOf(dropsFolder) and item:IsA("BasePart") then
+		local specialType = item:GetAttribute("IsSpecialDrop")
+		-- Efecto Imán / Vórtice
+		if specialType == "magnet" then
+			item:Destroy()
+			local char = player.Character
+			local _result = char
+			if _result ~= nil then
+				_result = _result:FindFirstChild("HumanoidRootPart")
+			end
+			local hrp = _result
+			if hrp then
+				-- Atraer instantáneamente todas las gemas del mapa hacia el jugador
+				for _, gem in dropsFolder:GetChildren() do
+					if gem:IsA("BasePart") and gem:GetAttribute("ExpValue") ~= nil then
+						gem.Position = hrp.Position
+					end
+				end
+			end
+			return nil
+		end
+		-- Efecto Cofre de Suministros (Nivel gratis directo)
+		if specialType == "chest" then
+			item:Destroy()
+			local leaderstats = player:FindFirstChild("leaderstats")
+			if leaderstats then
+				local levelStat = leaderstats:FindFirstChild("Level")
+				if levelStat then
+					levelStat.Value += 1
+					isGamePaused = true
+					for _, enemy in enemiesFolder:GetChildren() do
+						if enemy:IsA("BasePart") then
+							local vel = enemy:FindFirstChildOfClass("BodyVelocity")
+							if vel then
+								vel.Velocity = Vector3.new(0, 0, 0)
+							end
+						end
+					end
+					levelUpEvent:FireClient(player, levelStat.Value)
+				end
+			end
+			return nil
+		end
+		-- Gema normal
+		local _condition = (item:GetAttribute("ExpValue"))
 		if _condition == nil then
 			_condition = 10
 		end
 		local exp = _condition
-		gem:Destroy()
+		item:Destroy()
 		local leaderstats = player:FindFirstChild("leaderstats")
 		if leaderstats then
 			local expStat = leaderstats:FindFirstChild("EXP")
@@ -212,7 +339,7 @@ collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
 		end
 	end
 end)
--- 7. Configuración de estadísticas y estado inicial del jugador
+-- 8. Configuración de estadísticas y estado inicial del jugador
 Players.PlayerAdded:Connect(function(plr)
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
@@ -249,7 +376,7 @@ Players.PlayerAdded:Connect(function(plr)
 	moveSpeedBonus.Value = 0
 	moveSpeedBonus.Parent = inventory
 end)
--- 8. Manejo de elección de mejoras y REANUDACIÓN
+-- 9. Manejo de elección de mejoras y REANUDACIÓN
 selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 	local upgradeId = upgradeIdArg
 	local inventory = player:FindFirstChild("Inventory")
@@ -300,7 +427,7 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 	isGamePaused = false
 	print("[r-survivors] Juego reanudado.")
 end)
--- 9. Función para crear cualquier enemigo de ENEMY_TYPES
+-- 10. Función para crear cualquier enemigo de ENEMY_TYPES
 local function createEnemyInstance(config, index)
 	local enemy = Instance.new("Part")
 	enemy.Name = `{config.name}_{index}`
@@ -322,7 +449,6 @@ local function createEnemyInstance(config, index)
 	enemy:SetAttribute("LastShotTime", 0)
 	enemy.Parent = enemiesFolder
 	local bodyVelocity = Instance.new("BodyVelocity")
-	-- Fuerza proporcional a la masa para que los Goliat se muevan con soltura
 	local massMultiplier = math.max(1, enemy:GetMass())
 	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 200, 0, massMultiplier * 200)
 	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
@@ -348,7 +474,7 @@ local function createEnemyInstance(config, index)
 	end)
 	return enemy
 end
--- 10. Spawner inteligente con escalado de oleadas
+-- 11. Spawner inteligente con escalado de oleadas y BOSS EVENT
 task.spawn(function()
 	local enemyIndex = 0
 	while true do
@@ -357,31 +483,34 @@ task.spawn(function()
 			continue
 		end
 		gameElapsedTime += 1.5
+		-- BOSS EVENT: Minuto 3 (180 segundos)
+		if gameElapsedTime >= 180 and not bossSpawned then
+			bossSpawned = true
+			print("[BOSS EVENT] ¡El Señor del Vacío ha despertado!")
+			bossAlertEvent:FireAllClients("¡SEÑOR DEL VACÍO HA DESPERTADO!")
+			local bossPart = createEnemyInstance(ENEMY_TYPES.overlord_boss, 999)
+			bossPart.Position = Vector3.new(0, 4.5, 60)
+		end
 		local currentCount = #enemiesFolder:GetChildren()
 		local maxCapacity = math.min(50, 20 + math.floor(gameElapsedTime / 20) * 5)
 		if currentCount < maxCapacity then
 			enemyIndex += 1
-			-- Selección probabilística según tiempo de supervivencia
 			local chosenConfig = ENEMY_TYPES.crawler
 			local roll = math.random()
 			if gameElapsedTime > 60 and roll < 0.15 then
-				-- Bruto Goliat (Tanque grande tras 1 minuto)
 				chosenConfig = ENEMY_TYPES.brute
 			elseif gameElapsedTime > 35 and roll < 0.35 then
-				-- Centinela Tirador
 				chosenConfig = ENEMY_TYPES.turret
 			elseif gameElapsedTime > 15 and roll < 0.6 then
-				-- Deslizador rápido
 				chosenConfig = ENEMY_TYPES.skimmer
 			else
-				-- Crawler básico
 				chosenConfig = ENEMY_TYPES.crawler
 			end
 			createEnemyInstance(chosenConfig, enemyIndex)
 		end
 	end
 end)
--- 11. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter)
+-- 12. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter, Boss)
 local fireEnemyProjectile
 RunService.Heartbeat:Connect(function()
 	if isGamePaused then
@@ -409,10 +538,8 @@ RunService.Heartbeat:Connect(function()
 				_condition = 8.0
 			end
 			local baseSpeed = _condition
-			-- Encontrar jugador más cercano
 			local closestDist = 99999
 			local targetPos = nil
-			local targetPlayer = nil
 			for _1, p in allPlayers do
 				local char = p.Character
 				local _result = char
@@ -432,7 +559,6 @@ RunService.Heartbeat:Connect(function()
 					if dist < closestDist then
 						closestDist = dist
 						targetPos = hrp.Position
-						targetPlayer = p
 					end
 				end
 			end
@@ -441,23 +567,42 @@ RunService.Heartbeat:Connect(function()
 				local _position = enemy.Position
 				local dir = _targetPos - _position
 				local dirHorizontal = Vector3.new(dir.X, 0, dir.Z).Unit
-				-- Comportamiento Shooter (Centinela)
-				if behavior == "shooter" then
-					-- Mantiene distancia óptima de disparo (20 a 28 studs)
+				if behavior == "boss" then
+					-- BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles
+					bodyVel.Velocity = dirHorizontal * baseSpeed
+					local _condition_1 = (enemy:GetAttribute("LastShotTime"))
+					if _condition_1 == nil then
+						_condition_1 = 0
+					end
+					local lastShot = _condition_1
+					if currentTime - lastShot >= 2.5 then
+						enemy:SetAttribute("LastShotTime", currentTime)
+						-- Ráfaga en trío
+						fireEnemyProjectile(enemy.Position, targetPos, 18)
+						task.delay(0.2, function()
+							local _exp = enemy.Position
+							local _targetPos_1 = targetPos
+							local _vector3 = Vector3.new(4, 0, 4)
+							return fireEnemyProjectile(_exp, _targetPos_1 + _vector3, 18)
+						end)
+						task.delay(0.4, function()
+							local _exp = enemy.Position
+							local _targetPos_1 = targetPos
+							local _vector3 = Vector3.new(-4, 0, -4)
+							return fireEnemyProjectile(_exp, _targetPos_1 + _vector3, 18)
+						end)
+					end
+				elseif behavior == "shooter" then
 					if closestDist < 18 then
-						-- Retroceder si el jugador se acerca demasiado
 						local _arg0 = -baseSpeed * 0.8
 						bodyVel.Velocity = dirHorizontal * _arg0
 					elseif closestDist > 28 then
-						-- Acercarse si está lejos
 						bodyVel.Velocity = dirHorizontal * baseSpeed
 					else
-						-- Orbitar lateralmente
 						local perpDir = Vector3.new(-dirHorizontal.Z, 0, dirHorizontal.X)
 						local _arg0 = baseSpeed * 0.6
 						bodyVel.Velocity = perpDir * _arg0
 					end
-					-- Disparar proyectil al jugador
 					local _condition_1 = (enemy:GetAttribute("LastShotTime"))
 					if _condition_1 == nil then
 						_condition_1 = 0
@@ -468,11 +613,9 @@ RunService.Heartbeat:Connect(function()
 						fireEnemyProjectile(enemy.Position, targetPos, 14)
 					end
 				else
-					-- Persecución directa (Melee, Fast, Tank)
 					bodyVel.Velocity = dirHorizontal * baseSpeed
 				end
 			else
-				-- Sin objetivos vivos: ir al centro
 				local _vector3 = Vector3.new(0, 0, 0)
 				local _position = enemy.Position
 				local dirToCenter = (_vector3 - _position).Unit
@@ -481,31 +624,31 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 end)
--- 12. Proyectiles hostiles de los Centinelas (Turret)
+-- 13. Proyectiles hostiles de los Centinelas y Boss
 function fireEnemyProjectile(startPos, targetPos, damage)
 	local proj = Instance.new("Part")
-	proj.Name = "TurretOrb"
+	proj.Name = "EnemyOrb"
 	proj.Shape = Enum.PartType.Ball
-	proj.Size = Vector3.new(1.3, 1.3, 1.3)
-	proj.Color = Color3.new(0.05, 0.85, 1.0)
+	proj.Size = Vector3.new(1.4, 1.4, 1.4)
+	proj.Color = Color3.new(1.0, 0.15, 0.2)
 	proj.Material = Enum.Material.Neon
 	proj.CanCollide = false
 	proj.Anchored = false
 	local _startPos = startPos
-	local _vector3 = Vector3.new(0, 1.5, 0)
+	local _vector3 = Vector3.new(0, 2.0, 0)
 	proj.Position = _startPos + _vector3
 	proj.Parent = enemyProjectilesFolder
 	local light = Instance.new("PointLight")
 	light.Color = proj.Color
-	light.Range = 6
-	light.Brightness = 1.5
+	light.Range = 8
+	light.Brightness = 2
 	light.Parent = proj
 	local _targetPos = targetPos
 	local _position = proj.Position
 	local dir = (_targetPos - _position).Unit
 	local bodyVel = Instance.new("BodyVelocity")
-	bodyVel.MaxForce = Vector3.new(8000, 8000, 8000)
-	bodyVel.Velocity = dir * 26
+	bodyVel.MaxForce = Vector3.new(10000, 10000, 10000)
+	bodyVel.Velocity = dir * 28
 	bodyVel.Parent = proj
 	local hit = false
 	proj.Touched:Connect(function(hitPart)
