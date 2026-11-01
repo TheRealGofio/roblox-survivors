@@ -308,7 +308,9 @@ local function createEnemyInstance(config, index)
 	enemy:SetAttribute("LastShotTime", 0)
 	enemy.Parent = enemiesFolder
 	local bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.MaxForce = Vector3.new(6000, 0, 6000)
+	-- Fuerza proporcional a la masa para que los Goliat se muevan con soltura
+	local massMultiplier = math.max(1, enemy:GetMass())
+	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 200, 0, massMultiplier * 200)
 	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 	bodyVelocity.Parent = enemy
 	local lastPlayerDamageTime = 0

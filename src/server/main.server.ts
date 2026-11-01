@@ -307,7 +307,9 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.Parent = enemiesFolder;
 
 	const bodyVelocity = new Instance("BodyVelocity");
-	bodyVelocity.MaxForce = new Vector3(6000, 0, 6000);
+	// Fuerza proporcional a la masa para que los Goliat se muevan con soltura
+	const massMultiplier = math.max(1, enemy.GetMass());
+	bodyVelocity.MaxForce = new Vector3(massMultiplier * 200, 0, massMultiplier * 200);
 	bodyVelocity.Velocity = new Vector3(0, 0, 0);
 	bodyVelocity.Parent = enemy;
 
