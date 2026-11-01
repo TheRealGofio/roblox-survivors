@@ -90,7 +90,7 @@ task.spawn(() => {
 const dashIndicator = new Instance("Frame");
 dashIndicator.Name = "DashIndicator";
 dashIndicator.Size = new UDim2(0, 130, 0, 24);
-dashIndicator.Position = new UDim2(0.5, -65, 0.88, 0);
+dashIndicator.Position = new UDim2(0.5, -135, 0.88, 0); // Desplazado a la izquierda
 dashIndicator.BackgroundColor3 = new Color3(0.1, 0.12, 0.18);
 dashIndicator.BorderSizePixel = 0;
 dashIndicator.Parent = hudScreen;
@@ -104,25 +104,98 @@ dashText.Name = "DashText";
 dashText.Size = new UDim2(1, 0, 1, 0);
 dashText.BackgroundTransparency = 1;
 dashText.Font = Enum.Font.FredokaOne;
-dashText.Text = "⚡ DASH [L-SHIFT]";
+dashText.Text = "⚡ DASH [SHIFT]";
 dashText.TextColor3 = new Color3(0.2, 0.9, 0.95);
 dashText.TextSize = 13;
 dashText.Parent = dashIndicator;
+
+// Indicador / Cooldown de Za Warudo en HUD
+const zaWarudoIndicator = new Instance("Frame");
+zaWarudoIndicator.Name = "ZaWarudoIndicator";
+zaWarudoIndicator.Size = new UDim2(0, 130, 0, 24);
+zaWarudoIndicator.Position = new UDim2(0.5, 5, 0.88, 0); // A la derecha del Dash
+zaWarudoIndicator.BackgroundColor3 = new Color3(0.15, 0.1, 0.22);
+zaWarudoIndicator.BorderSizePixel = 0;
+zaWarudoIndicator.Parent = hudScreen;
+
+const zwCorner = new Instance("UICorner");
+zwCorner.CornerRadius = new UDim(0, 6);
+zwCorner.Parent = zaWarudoIndicator;
+
+const zwText = new Instance("TextLabel");
+zwText.Name = "ZaWarudoText";
+zwText.Size = new UDim2(1, 0, 1, 0);
+zwText.BackgroundTransparency = 1;
+zwText.Font = Enum.Font.FredokaOne;
+zwText.Text = "⏱️ STASIS [E]";
+zwText.TextColor3 = new Color3(0.85, 0.45, 1.0); // Violeta / Púrpura
+zwText.TextSize = 13;
+zwText.Parent = zaWarudoIndicator;
+
+// Cooldown de Za Warudo (40 segundos)
+const ZA_WARUDO_COOLDOWN = 40.0;
+let lastZaWarudoTime = -ZA_WARUDO_COOLDOWN;
 
 task.spawn(() => {
 	while (true) {
 		task.wait(0.1);
 		const timeSinceDash = os.clock() - lastDashTime;
 		if (timeSinceDash >= DASH_COOLDOWN) {
-			dashText.Text = "⚡ DASH [L-SHIFT]";
+			dashText.Text = "⚡ DASH [SHIFT]";
 			dashText.TextColor3 = new Color3(0.2, 0.9, 0.95);
 		} else {
 			const remaining = string.format("%.1f", math.max(0, DASH_COOLDOWN - timeSinceDash));
 			dashText.Text = `⏳ ${remaining}s`;
 			dashText.TextColor3 = new Color3(0.6, 0.6, 0.65);
 		}
+
+		const timeSinceZw = os.clock() - lastZaWarudoTime;
+		if (timeSinceZw >= ZA_WARUDO_COOLDOWN) {
+			zwText.Text = "⏱️ STASIS [E]";
+			zwText.TextColor3 = new Color3(0.85, 0.45, 1.0);
+		} else {
+			const remainingZw = string.format("%.1f", math.max(0, ZA_WARUDO_COOLDOWN - timeSinceZw));
+			zwText.Text = `⏳ ${remainingZw}s`;
+			zwText.TextColor3 = new Color3(0.6, 0.6, 0.65);
+		}
 	}
 });
+
+// Filtro Violeta Cósmico en Pantalla para Za Warudo
+const stasisOverlay = new Instance("Frame");
+stasisOverlay.Name = "StasisOverlay";
+stasisOverlay.Size = new UDim2(1, 0, 1, 0);
+stasisOverlay.BackgroundColor3 = new Color3(0.35, 0.05, 0.55); // Violeta temporal
+stasisOverlay.BackgroundTransparency = 1;
+stasisOverlay.BorderSizePixel = 0;
+stasisOverlay.Visible = false;
+stasisOverlay.Parent = hudScreen;
+
+const stasisText = new Instance("TextLabel");
+stasisText.Size = new UDim2(1, 0, 0, 80);
+stasisText.Position = new UDim2(0, 0, 0.4, 0);
+stasisText.BackgroundTransparency = 1;
+stasisText.Font = Enum.Font.FredokaOne;
+stasisText.Text = "THE WORLD (ESTASIS TEMPORAL)";
+stasisText.TextSize = 36;
+stasisText.TextColor3 = new Color3(0.9, 0.6, 1.0);
+stasisText.TextStrokeTransparency = 0;
+stasisText.Parent = stasisOverlay;
+
+function triggerLocalZaWarudo() {
+	if (isClientPaused || isGameOver) return;
+	const now = os.clock();
+	if (now - lastZaWarudoTime < ZA_WARUDO_COOLDOWN) return;
+
+	lastZaWarudoTime = now;
+
+	let zwEvent = networkFolder?.FindFirstChild("ZaWarudo") as RemoteEvent;
+	if (!zwEvent) {
+		const net = Workspace.FindFirstChild("Network") as Folder;
+		if (net) zwEvent = net.FindFirstChild("ZaWarudo") as RemoteEvent;
+	}
+	zwEvent?.FireServer();
+}
 
 // Función de activación de Dash
 function triggerDash() {
@@ -180,11 +253,13 @@ function triggerDash() {
 	});
 }
 
-// Escuchar pulsación de Shift izquierdo o Q para Dash
+// Escuchar pulsación de Shift/Q para Dash y E para Za Warudo
 UserInputService.InputBegan.Connect((input, processed) => {
 	if (processed) return;
 	if (input.KeyCode === Enum.KeyCode.LeftShift || input.KeyCode === Enum.KeyCode.Q) {
 		triggerDash();
+	} else if (input.KeyCode === Enum.KeyCode.E) {
+		triggerLocalZaWarudo();
 	}
 });
 // 2. Obtener referencias de RemoteEvents
@@ -197,6 +272,59 @@ let bossAlertEvent = networkFolder ? (networkFolder.WaitForChild("BossAlert", 5)
 let debugActionEvent = networkFolder ? (networkFolder.WaitForChild("DebugAction", 5) as RemoteEvent) : undefined;
 
 let restartGameEvent = networkFolder ? (networkFolder.WaitForChild("RestartGame", 5) as RemoteEvent) : undefined;
+let zaWarudoEvent = networkFolder ? (networkFolder.WaitForChild("ZaWarudo", 5) as RemoteEvent) : undefined;
+
+// Conectar evento Za Warudo para efectos visuales y onda de choque
+const connectZaWarudoListener = (ev?: RemoteEvent) => {
+	ev?.OnClientEvent.Connect((durationArg: unknown) => {
+		const duration = typeOf(durationArg) === "number" ? (durationArg as number) : 4.0;
+
+		// Activar filtro violeta
+		stasisOverlay.Visible = true;
+		stasisOverlay.BackgroundTransparency = 0.55;
+		SoundManager.playSound("levelUp", 1.0, 0.5); // Sonido grave temporal
+
+		// Onda expansiva holográfica desde el jugador
+		const char = player.Character;
+		const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+		if (hrp) {
+			const ring = new Instance("Part");
+			ring.Shape = Enum.PartType.Cylinder;
+			ring.Size = new Vector3(0.5, 4, 4);
+			ring.CFrame = new CFrame(hrp.Position).mul(CFrame.Angles(0, 0, math.rad(90)));
+			ring.Color = new Color3(0.85, 0.35, 1.0);
+			ring.Material = Enum.Material.Neon;
+			ring.CanCollide = false;
+			ring.Anchored = true;
+			ring.Parent = Workspace;
+
+			TweenService.Create(ring, new TweenInfo(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size: new Vector3(0.5, 80, 80),
+				Transparency: 1,
+			}).Play();
+			Debris.AddItem(ring, 0.7);
+		}
+
+		// Desvanecer overlay al terminar el tiempo de estasis
+		task.delay(duration - 0.5, () => {
+			TweenService.Create(stasisOverlay, new TweenInfo(0.5), {
+				BackgroundTransparency: 1,
+			}).Play();
+			task.delay(0.5, () => {
+				stasisOverlay.Visible = false;
+			});
+		});
+	});
+};
+
+if (zaWarudoEvent) connectZaWarudoListener(zaWarudoEvent);
+else {
+	task.spawn(() => {
+		const net = Workspace.WaitForChild("Network", 10) as Folder;
+		const ev = net?.WaitForChild("ZaWarudo", 5) as RemoteEvent;
+		connectZaWarudoListener(ev);
+	});
+}
 
 // Panel de Debug Plegable Organizado por Categorías (F2 o Botón)
 const debugGui = new Instance("ScreenGui");
@@ -265,10 +393,10 @@ const debugCategories = [
 		title: "✨ PASIVAS & STATS",
 		headerColor: new Color3(0.2, 0.75, 0.95),
 		buttons: [
+			{ id: "trigger_zawarudo", label: "⏱️ ZA WARUDO" },
 			{ id: "instant_level_up", label: "⭐ Level Up (+1)" },
 			{ id: "heal_player", label: "❤️ Curar al 100%" },
 			{ id: "give_speed", label: "👟 +6 Velocidad" },
-			{ id: "add_time", label: "⏱️ +60s Reloj" },
 		],
 	},
 	{

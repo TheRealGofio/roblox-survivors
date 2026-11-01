@@ -86,7 +86,7 @@ end)
 local dashIndicator = Instance.new("Frame")
 dashIndicator.Name = "DashIndicator"
 dashIndicator.Size = UDim2.new(0, 130, 0, 24)
-dashIndicator.Position = UDim2.new(0.5, -65, 0.88, 0)
+dashIndicator.Position = UDim2.new(0.5, -135, 0.88, 0)
 dashIndicator.BackgroundColor3 = Color3.new(0.1, 0.12, 0.18)
 dashIndicator.BorderSizePixel = 0
 dashIndicator.Parent = hudScreen
@@ -98,24 +98,101 @@ dashText.Name = "DashText"
 dashText.Size = UDim2.new(1, 0, 1, 0)
 dashText.BackgroundTransparency = 1
 dashText.Font = Enum.Font.FredokaOne
-dashText.Text = "⚡ DASH [L-SHIFT]"
+dashText.Text = "⚡ DASH [SHIFT]"
 dashText.TextColor3 = Color3.new(0.2, 0.9, 0.95)
 dashText.TextSize = 13
 dashText.Parent = dashIndicator
+-- Indicador / Cooldown de Za Warudo en HUD
+local zaWarudoIndicator = Instance.new("Frame")
+zaWarudoIndicator.Name = "ZaWarudoIndicator"
+zaWarudoIndicator.Size = UDim2.new(0, 130, 0, 24)
+zaWarudoIndicator.Position = UDim2.new(0.5, 5, 0.88, 0)
+zaWarudoIndicator.BackgroundColor3 = Color3.new(0.15, 0.1, 0.22)
+zaWarudoIndicator.BorderSizePixel = 0
+zaWarudoIndicator.Parent = hudScreen
+local zwCorner = Instance.new("UICorner")
+zwCorner.CornerRadius = UDim.new(0, 6)
+zwCorner.Parent = zaWarudoIndicator
+local zwText = Instance.new("TextLabel")
+zwText.Name = "ZaWarudoText"
+zwText.Size = UDim2.new(1, 0, 1, 0)
+zwText.BackgroundTransparency = 1
+zwText.Font = Enum.Font.FredokaOne
+zwText.Text = "⏱️ STASIS [E]"
+zwText.TextColor3 = Color3.new(0.85, 0.45, 1.0)
+zwText.TextSize = 13
+zwText.Parent = zaWarudoIndicator
+-- Cooldown de Za Warudo (40 segundos)
+local ZA_WARUDO_COOLDOWN = 40.0
+local lastZaWarudoTime = -ZA_WARUDO_COOLDOWN
 task.spawn(function()
 	while true do
 		task.wait(0.1)
 		local timeSinceDash = os.clock() - lastDashTime
 		if timeSinceDash >= DASH_COOLDOWN then
-			dashText.Text = "⚡ DASH [L-SHIFT]"
+			dashText.Text = "⚡ DASH [SHIFT]"
 			dashText.TextColor3 = Color3.new(0.2, 0.9, 0.95)
 		else
 			local remaining = string.format("%.1f", math.max(0, DASH_COOLDOWN - timeSinceDash))
 			dashText.Text = `⏳ {remaining}s`
 			dashText.TextColor3 = Color3.new(0.6, 0.6, 0.65)
 		end
+		local timeSinceZw = os.clock() - lastZaWarudoTime
+		if timeSinceZw >= ZA_WARUDO_COOLDOWN then
+			zwText.Text = "⏱️ STASIS [E]"
+			zwText.TextColor3 = Color3.new(0.85, 0.45, 1.0)
+		else
+			local remainingZw = string.format("%.1f", math.max(0, ZA_WARUDO_COOLDOWN - timeSinceZw))
+			zwText.Text = `⏳ {remainingZw}s`
+			zwText.TextColor3 = Color3.new(0.6, 0.6, 0.65)
+		end
 	end
 end)
+-- Filtro Violeta Cósmico en Pantalla para Za Warudo
+local stasisOverlay = Instance.new("Frame")
+stasisOverlay.Name = "StasisOverlay"
+stasisOverlay.Size = UDim2.new(1, 0, 1, 0)
+stasisOverlay.BackgroundColor3 = Color3.new(0.35, 0.05, 0.55)
+stasisOverlay.BackgroundTransparency = 1
+stasisOverlay.BorderSizePixel = 0
+stasisOverlay.Visible = false
+stasisOverlay.Parent = hudScreen
+local stasisText = Instance.new("TextLabel")
+stasisText.Size = UDim2.new(1, 0, 0, 80)
+stasisText.Position = UDim2.new(0, 0, 0.4, 0)
+stasisText.BackgroundTransparency = 1
+stasisText.Font = Enum.Font.FredokaOne
+stasisText.Text = "THE WORLD (ESTASIS TEMPORAL)"
+stasisText.TextSize = 36
+stasisText.TextColor3 = Color3.new(0.9, 0.6, 1.0)
+stasisText.TextStrokeTransparency = 0
+stasisText.Parent = stasisOverlay
+local networkFolder
+local function triggerLocalZaWarudo()
+	if isClientPaused or isGameOver then
+		return nil
+	end
+	local now = os.clock()
+	if now - lastZaWarudoTime < ZA_WARUDO_COOLDOWN then
+		return nil
+	end
+	lastZaWarudoTime = now
+	local _result = networkFolder
+	if _result ~= nil then
+		_result = _result:FindFirstChild("ZaWarudo")
+	end
+	local zwEvent = _result
+	if not zwEvent then
+		local net = Workspace:FindFirstChild("Network")
+		if net then
+			zwEvent = net:FindFirstChild("ZaWarudo")
+		end
+	end
+	local _result_1 = zwEvent
+	if _result_1 ~= nil then
+		_result_1:FireServer()
+	end
+end
 -- Función de activación de Dash
 local function triggerDash()
 	if isClientPaused or isGameOver or isDashing then
@@ -180,17 +257,19 @@ local function triggerDash()
 		isDashing = false
 	end)
 end
--- Escuchar pulsación de Shift izquierdo o Q para Dash
+-- Escuchar pulsación de Shift/Q para Dash y E para Za Warudo
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
 		return nil
 	end
 	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.Q then
 		triggerDash()
+	elseif input.KeyCode == Enum.KeyCode.E then
+		triggerLocalZaWarudo()
 	end
 end)
 -- 2. Obtener referencias de RemoteEvents
-local networkFolder = Workspace:WaitForChild("Network", 5)
+networkFolder = Workspace:WaitForChild("Network", 5)
 local damageEvent = if networkFolder then (networkFolder:WaitForChild("DamageEnemy", 5)) else nil
 local collectGemEvent = if networkFolder then (networkFolder:WaitForChild("CollectGem", 5)) else nil
 local levelUpEvent = if networkFolder then (networkFolder:WaitForChild("LevelUp", 5)) else nil
@@ -198,6 +277,68 @@ local selectUpgradeEvent = if networkFolder then (networkFolder:WaitForChild("Se
 local bossAlertEvent = if networkFolder then (networkFolder:WaitForChild("BossAlert", 5)) else nil
 local debugActionEvent = if networkFolder then (networkFolder:WaitForChild("DebugAction", 5)) else nil
 local restartGameEvent = if networkFolder then (networkFolder:WaitForChild("RestartGame", 5)) else nil
+local zaWarudoEvent = if networkFolder then (networkFolder:WaitForChild("ZaWarudo", 5)) else nil
+-- Conectar evento Za Warudo para efectos visuales y onda de choque
+local connectZaWarudoListener = function(ev)
+	local _result = ev
+	if _result ~= nil then
+		_result = _result.OnClientEvent:Connect(function(durationArg)
+			local _durationArg = durationArg
+			local duration = if typeof(_durationArg) == "number" then durationArg else 4.0
+			-- Activar filtro violeta
+			stasisOverlay.Visible = true
+			stasisOverlay.BackgroundTransparency = 0.55
+			SoundManager.playSound("levelUp", 1.0, 0.5)
+			-- Onda expansiva holográfica desde el jugador
+			local char = player.Character
+			local _result_1 = char
+			if _result_1 ~= nil then
+				_result_1 = _result_1:FindFirstChild("HumanoidRootPart")
+			end
+			local hrp = _result_1
+			if hrp then
+				local ring = Instance.new("Part")
+				ring.Shape = Enum.PartType.Cylinder
+				ring.Size = Vector3.new(0.5, 4, 4)
+				local _cFrame = CFrame.new(hrp.Position)
+				local _arg0 = CFrame.Angles(0, 0, math.rad(90))
+				ring.CFrame = _cFrame * _arg0
+				ring.Color = Color3.new(0.85, 0.35, 1.0)
+				ring.Material = Enum.Material.Neon
+				ring.CanCollide = false
+				ring.Anchored = true
+				ring.Parent = Workspace
+				TweenService:Create(ring, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					Size = Vector3.new(0.5, 80, 80),
+					Transparency = 1,
+				}):Play()
+				Debris:AddItem(ring, 0.7)
+			end
+			-- Desvanecer overlay al terminar el tiempo de estasis
+			task.delay(duration - 0.5, function()
+				TweenService:Create(stasisOverlay, TweenInfo.new(0.5), {
+					BackgroundTransparency = 1,
+				}):Play()
+				task.delay(0.5, function()
+					stasisOverlay.Visible = false
+				end)
+			end)
+		end)
+	end
+end
+if zaWarudoEvent then
+	connectZaWarudoListener(zaWarudoEvent)
+else
+	task.spawn(function()
+		local net = Workspace:WaitForChild("Network", 10)
+		local _result = net
+		if _result ~= nil then
+			_result = _result:WaitForChild("ZaWarudo", 5)
+		end
+		local ev = _result
+		connectZaWarudoListener(ev)
+	end)
+end
 -- Panel de Debug Plegable Organizado por Categorías (F2 o Botón)
 local debugGui = Instance.new("ScreenGui")
 debugGui.Name = "DebugGui"
@@ -262,6 +403,9 @@ local debugCategories = { {
 	title = "✨ PASIVAS & STATS",
 	headerColor = Color3.new(0.2, 0.75, 0.95),
 	buttons = { {
+		id = "trigger_zawarudo",
+		label = "⏱️ ZA WARUDO",
+	}, {
 		id = "instant_level_up",
 		label = "⭐ Level Up (+1)",
 	}, {
@@ -270,9 +414,6 @@ local debugCategories = { {
 	}, {
 		id = "give_speed",
 		label = "👟 +6 Velocidad",
-	}, {
-		id = "add_time",
-		label = "⏱️ +60s Reloj",
 	} },
 }, {
 	title = "🌍 ENTORNO / SPAWNS",

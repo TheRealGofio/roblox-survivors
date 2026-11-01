@@ -118,6 +118,13 @@ if (!restartGameEvent) {
 	restartGameEvent.Parent = networkFolder;
 }
 
+let zaWarudoEvent = networkFolder.FindFirstChild("ZaWarudo") as RemoteEvent;
+if (!zaWarudoEvent) {
+	zaWarudoEvent = new Instance("RemoteEvent");
+	zaWarudoEvent.Name = "ZaWarudo";
+	zaWarudoEvent.Parent = networkFolder;
+}
+
 // 4. Función generadora de Gemas (Cristales de EXP)
 function spawnExpGem(position: Vector3, expValue = 10) {
 	const gem = new Instance("Part");
@@ -521,7 +528,44 @@ debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
 	} else if (action === "give_speed") {
 		const hum = char?.FindFirstChildOfClass("Humanoid");
 		if (hum) hum.WalkSpeed += 6;
+	} else if (action === "trigger_zawarudo") {
+		triggerZaWarudo(player);
 	}
+});
+
+// Función central de Za Warudo (Estasis Temporal)
+let isZaWarudoActive = false;
+function triggerZaWarudo(player: Player) {
+	if (isZaWarudoActive || isGamePaused) return;
+	isZaWarudoActive = true;
+	print(`[ZA WARUDO] Activado por ${player.Name}! Tiempo congelado durante 4.0s`);
+
+	// Notificar a todos los clientes para efectos de pantalla y audio
+	zaWarudoEvent.FireAllClients(4.0);
+
+	// Congelar velocidades de todos los enemigos y proyectiles
+	for (const enemy of enemiesFolder.GetChildren()) {
+		if (enemy.IsA("BasePart")) {
+			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+			if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
+		}
+	}
+	for (const proj of enemyProjectilesFolder.GetChildren()) {
+		if (proj.IsA("BasePart")) {
+			const bodyVel = proj.FindFirstChildOfClass("BodyVelocity");
+			if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
+		}
+	}
+
+	task.delay(4.0, () => {
+		isZaWarudoActive = false;
+		print("[ZA WARUDO] El tiempo vuelve a fluir...");
+	});
+}
+
+// Escuchar activación manual de Za Warudo desde el cliente
+zaWarudoEvent.OnServerEvent.Connect((player) => {
+	triggerZaWarudo(player);
 });
 
 // Manejo de reinicio completo de partida
@@ -681,10 +725,16 @@ task.spawn(() => {
 
 // 12. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter, Boss)
 RunService.Heartbeat.Connect(() => {
-	if (isGamePaused) {
+	if (isGamePaused || isZaWarudoActive) {
 		for (const enemy of enemiesFolder.GetChildren()) {
 			if (enemy.IsA("BasePart")) {
 				const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+				if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
+			}
+		}
+		for (const proj of enemyProjectilesFolder.GetChildren()) {
+			if (proj.IsA("BasePart")) {
+				const bodyVel = proj.FindFirstChildOfClass("BodyVelocity");
 				if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
 			}
 		}

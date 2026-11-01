@@ -107,6 +107,12 @@ if not restartGameEvent then
 	restartGameEvent.Name = "RestartGame"
 	restartGameEvent.Parent = networkFolder
 end
+local zaWarudoEvent = networkFolder:FindFirstChild("ZaWarudo")
+if not zaWarudoEvent then
+	zaWarudoEvent = Instance.new("RemoteEvent")
+	zaWarudoEvent.Name = "ZaWarudo"
+	zaWarudoEvent.Parent = networkFolder
+end
 -- 4. Función generadora de Gemas (Cristales de EXP)
 local function spawnExpGem(position, expValue)
 	if expValue == nil then
@@ -450,7 +456,7 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 	print("[r-survivors] Juego reanudado.")
 end)
 -- Manejo de acciones del Debug Panel
-local createEnemyInstance
+local createEnemyInstance, triggerZaWarudo
 debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 	local action = actionArg
 	local char = player.Character
@@ -578,7 +584,45 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 		if hum then
 			hum.WalkSpeed += 6
 		end
+	elseif action == "trigger_zawarudo" then
+		triggerZaWarudo(player)
 	end
+end)
+-- Función central de Za Warudo (Estasis Temporal)
+local isZaWarudoActive = false
+function triggerZaWarudo(player)
+	if isZaWarudoActive or isGamePaused then
+		return nil
+	end
+	isZaWarudoActive = true
+	print(`[ZA WARUDO] Activado por {player.Name}! Tiempo congelado durante 4.0s`)
+	-- Notificar a todos los clientes para efectos de pantalla y audio
+	zaWarudoEvent:FireAllClients(4.0)
+	-- Congelar velocidades de todos los enemigos y proyectiles
+	for _, enemy in enemiesFolder:GetChildren() do
+		if enemy:IsA("BasePart") then
+			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+			if bodyVel then
+				bodyVel.Velocity = Vector3.new(0, 0, 0)
+			end
+		end
+	end
+	for _, proj in enemyProjectilesFolder:GetChildren() do
+		if proj:IsA("BasePart") then
+			local bodyVel = proj:FindFirstChildOfClass("BodyVelocity")
+			if bodyVel then
+				bodyVel.Velocity = Vector3.new(0, 0, 0)
+			end
+		end
+	end
+	task.delay(4.0, function()
+		isZaWarudoActive = false
+		print("[ZA WARUDO] El tiempo vuelve a fluir...")
+	end)
+end
+-- Escuchar activación manual de Za Warudo desde el cliente
+zaWarudoEvent.OnServerEvent:Connect(function(player)
+	triggerZaWarudo(player)
 end)
 -- Manejo de reinicio completo de partida
 restartGameEvent.OnServerEvent:Connect(function(player)
@@ -745,10 +789,18 @@ end)
 -- 12. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter, Boss)
 local fireEnemyProjectile
 RunService.Heartbeat:Connect(function()
-	if isGamePaused then
+	if isGamePaused or isZaWarudoActive then
 		for _, enemy in enemiesFolder:GetChildren() do
 			if enemy:IsA("BasePart") then
 				local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+				if bodyVel then
+					bodyVel.Velocity = Vector3.new(0, 0, 0)
+				end
+			end
+		end
+		for _, proj in enemyProjectilesFolder:GetChildren() do
+			if proj:IsA("BasePart") then
+				local bodyVel = proj:FindFirstChildOfClass("BodyVelocity")
 				if bodyVel then
 					bodyVel.Velocity = Vector3.new(0, 0, 0)
 				end
