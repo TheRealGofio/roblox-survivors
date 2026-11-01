@@ -3,6 +3,7 @@ local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_incl
 local _services = TS.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services")
 local Debris = _services.Debris
 local Players = _services.Players
+local ReplicatedStorage = _services.ReplicatedStorage
 local RunService = _services.RunService
 local TweenService = _services.TweenService
 local Workspace = _services.Workspace
@@ -703,7 +704,7 @@ restartGameEvent.OnServerEvent:Connect(function(player)
 		hrp.CFrame = CFrame.new(0, 3, 0)
 	end
 end)
--- 10. Función para crear cualquier enemigo de ENEMY_TYPES
+-- 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Modelos 3D
 function createEnemyInstance(config, index)
 	local enemy = Instance.new("Part")
 	enemy.Name = `{config.name}_{index}`
@@ -715,6 +716,37 @@ function createEnemyInstance(config, index)
 	local angle = math.random() * math.pi * 2
 	local dist = 42 + math.random() * 22
 	enemy.Position = Vector3.new(math.cos(angle) * dist, config.size.Y / 2 + 1, math.sin(angle) * dist)
+	-- Si existe un Modelo 3D en ReplicatedStorage.EnemyModels, clonarlo e integrarlo visualmente
+	local _value = config.modelName
+	if _value ~= "" and _value then
+		local enemyModelsFolder = ReplicatedStorage:FindFirstChild("EnemyModels")
+		local _result = enemyModelsFolder
+		if _result ~= nil then
+			_result = _result:FindFirstChild(config.modelName)
+		end
+		local templateModel = _result
+		if templateModel then
+			local visualClone = templateModel:Clone()
+			visualClone.Name = "VisualModel"
+			-- Soldar todas las partes del modelo al enemigo físico hitbox
+			for _, desc in visualClone:GetDescendants() do
+				if desc:IsA("BasePart") then
+					desc.CanCollide = false
+					desc.Anchored = false
+					desc.Massless = true
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = enemy
+					weld.Part1 = desc
+					weld.Parent = desc
+				end
+			end
+			-- Posicionar el modelo sobre la hitbox del enemigo
+			visualClone:PivotTo(CFrame.new(enemy.Position))
+			visualClone.Parent = enemy
+			-- La parte física actúa como hitbox y collider invisible
+			enemy.Transparency = 1
+		end
+	end
 	enemy:SetAttribute("HP", config.hp)
 	enemy:SetAttribute("MaxHP", config.hp)
 	enemy:SetAttribute("Speed", config.speed)

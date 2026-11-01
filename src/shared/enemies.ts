@@ -9,6 +9,7 @@ export interface EnemyTypeConfig {
 	size: Vector3;
 	color: Color3;
 	material: Enum.Material;
+	modelName?: string;
 	shootCooldown?: number;
 	projectileSpeed?: number;
 	isBoss?: boolean;
@@ -24,8 +25,9 @@ export const ENEMY_TYPES: Record<string, EnemyTypeConfig> = {
 		damage: 10,
 		xpValue: 10,
 		size: new Vector3(3, 3, 3),
-		color: new Color3(0.95, 0.2, 0.25), // Carmesí neón
+		color: new Color3(0.2, 0.85, 0.3), // Verde babosa con espinas
 		material: Enum.Material.Neon,
+		modelName: "GreenSpikyBlob",
 	},
 	skimmer: {
 		id: "skimmer",
@@ -35,9 +37,10 @@ export const ENEMY_TYPES: Record<string, EnemyTypeConfig> = {
 		speed: 13.5,
 		damage: 8,
 		xpValue: 15,
-		size: new Vector3(2, 1.6, 2),
+		size: new Vector3(2.5, 2, 3),
 		color: new Color3(1.0, 0.65, 0.1), // Ámbar neón
 		material: Enum.Material.Neon,
+		modelName: "ViperSkimmer",
 	},
 	brute: {
 		id: "brute",
@@ -48,8 +51,9 @@ export const ENEMY_TYPES: Record<string, EnemyTypeConfig> = {
 		damage: 22,
 		xpValue: 45,
 		size: new Vector3(5, 5, 5),
-		color: new Color3(0.55, 0.15, 0.95), // Púrpura neón
+		color: new Color3(0.85, 0.2, 0.2), // Demonio corpulento
 		material: Enum.Material.Neon,
+		modelName: "DemonBrute",
 	},
 	turret: {
 		id: "turret",
@@ -62,6 +66,7 @@ export const ENEMY_TYPES: Record<string, EnemyTypeConfig> = {
 		size: new Vector3(2.6, 3.8, 2.6),
 		color: new Color3(0.05, 0.8, 0.95), // Cian eléctrico
 		material: Enum.Material.Neon,
+		modelName: "TurretDrone",
 		shootCooldown: 3.2,
 		projectileSpeed: 28,
 	},
@@ -73,9 +78,10 @@ export const ENEMY_TYPES: Record<string, EnemyTypeConfig> = {
 		speed: 7.0,
 		damage: 28,
 		xpValue: 150,
-		size: new Vector3(7.5, 7.5, 7.5),
-		color: new Color3(1.0, 0.1, 0.1), // Carmesí oscuro fulgurante
+		size: new Vector3(8, 8, 8),
+		color: new Color3(0.15, 0.05, 0.25), // Titán del vacío
 		material: Enum.Material.Neon,
+		modelName: "VoidOverlord",
 		shootCooldown: 2.5,
 		projectileSpeed: 30,
 		isBoss: true,

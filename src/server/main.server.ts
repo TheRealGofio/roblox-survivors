@@ -1,4 +1,4 @@
-import { Debris, Players, RunService, TweenService, Workspace } from "@rbxts/services";
+import { Debris, Players, ReplicatedStorage, RunService, TweenService, Workspace } from "@rbxts/services";
 import { ENEMY_TYPES, EnemyTypeConfig } from "shared/enemies";
 import { WEAPONS } from "shared/weapons";
 import { EnvironmentManager } from "./environment";
@@ -632,7 +632,7 @@ restartGameEvent.OnServerEvent.Connect((player) => {
 	}
 });
 
-// 10. Función para crear cualquier enemigo de ENEMY_TYPES
+// 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Modelos 3D
 function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	const enemy = new Instance("Part");
 	enemy.Name = `${config.name}_${index}`;
@@ -645,6 +645,37 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	const angle = math.random() * math.pi * 2;
 	const dist = 42 + math.random() * 22;
 	enemy.Position = new Vector3(math.cos(angle) * dist, config.size.Y / 2 + 1, math.sin(angle) * dist);
+
+	// Si existe un Modelo 3D en ReplicatedStorage.EnemyModels, clonarlo e integrarlo visualmente
+	if (config.modelName) {
+		const enemyModelsFolder = ReplicatedStorage.FindFirstChild("EnemyModels") as Folder;
+		const templateModel = enemyModelsFolder?.FindFirstChild(config.modelName) as Model;
+		if (templateModel) {
+			const visualClone = templateModel.Clone();
+			visualClone.Name = "VisualModel";
+
+			// Soldar todas las partes del modelo al enemigo físico hitbox
+			for (const desc of visualClone.GetDescendants()) {
+				if (desc.IsA("BasePart")) {
+					desc.CanCollide = false;
+					desc.Anchored = false;
+					desc.Massless = true;
+
+					const weld = new Instance("WeldConstraint");
+					weld.Part0 = enemy;
+					weld.Part1 = desc;
+					weld.Parent = desc;
+				}
+			}
+
+			// Posicionar el modelo sobre la hitbox del enemigo
+			visualClone.PivotTo(new CFrame(enemy.Position));
+			visualClone.Parent = enemy;
+
+			// La parte física actúa como hitbox y collider invisible
+			enemy.Transparency = 1;
+		}
+	}
 
 	enemy.SetAttribute("HP", config.hp);
 	enemy.SetAttribute("MaxHP", config.hp);
