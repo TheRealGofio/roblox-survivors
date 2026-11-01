@@ -654,26 +654,29 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 			const visualClone = templateModel.Clone();
 			visualClone.Name = "VisualModel";
 
-			// Soldar todas las partes del modelo al enemigo físico hitbox
-			for (const desc of visualClone.GetDescendants()) {
-				if (desc.IsA("BasePart")) {
-					desc.CanCollide = false;
-					desc.Anchored = false;
-					desc.Massless = true;
-
-					const weld = new Instance("WeldConstraint");
-					weld.Part0 = enemy;
-					weld.Part1 = desc;
-					weld.Parent = desc;
+			const primary = visualClone.PrimaryPart ?? (visualClone.FindFirstChildWhichIsA("BasePart", true) as BasePart);
+			if (primary) {
+				// Soldar únicamente la parte raíz del modelo visual a la hitbox física del enemigo
+				// Las demás partes se articulan dinámicamente mediante sus Motor6D
+				for (const desc of visualClone.GetDescendants()) {
+					if (desc.IsA("BasePart")) {
+						desc.CanCollide = false;
+						desc.Anchored = false;
+						desc.Massless = true;
+					}
 				}
+
+				const rootWeld = new Instance("WeldConstraint");
+				rootWeld.Part0 = enemy;
+				rootWeld.Part1 = primary;
+				rootWeld.Parent = enemy;
+
+				visualClone.PivotTo(new CFrame(enemy.Position));
+				visualClone.Parent = enemy;
+
+				// La parte física actúa como hitbox y collider invisible
+				enemy.Transparency = 1;
 			}
-
-			// Posicionar el modelo sobre la hitbox del enemigo
-			visualClone.PivotTo(new CFrame(enemy.Position));
-			visualClone.Parent = enemy;
-
-			// La parte física actúa como hitbox y collider invisible
-			enemy.Transparency = 1;
 		}
 	}
 
@@ -833,9 +836,83 @@ RunService.Heartbeat.Connect(() => {
 				} else {
 					bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
 				}
+
+				// Rotar suavemente el enemigo hacia la dirección en la que avanza
+				enemy.CFrame = new CFrame(enemy.Position, enemy.Position.add(dirHorizontal));
 			} else {
 				const dirToCenter = new Vector3(0, 0, 0).sub(enemy.Position).Unit;
 				bodyVel.Velocity = new Vector3(dirToCenter.X * 5, 0, dirToCenter.Z * 5);
+				enemy.CFrame = new CFrame(enemy.Position, enemy.Position.add(dirToCenter));
+			}
+
+			// 12.1 Animaciones procedurales dinámicas para los modelos 3D según su arquetipo
+			const visualModel = enemy.FindFirstChild("VisualModel") as Model;
+			if (visualModel) {
+				const animTime = currentTime * 6.0;
+
+				if (behavior === "melee") {
+					// Crawler (GreenSpikyBlob): Marcha elástica con rebote squash & stretch de púas
+					const spikesMotor = visualModel.FindFirstChild("spikes_geom_Motor", true) as Motor6D;
+					if (spikesMotor) {
+						spikesMotor.Transform = CFrame.Angles(0, math.sin(animTime) * 0.15, 0).mul(
+							new CFrame(0, math.sin(animTime * 2) * 0.25, 0),
+						);
+					}
+					const eyesMotor = visualModel.FindFirstChild("eyes_geom_Motor", true) as Motor6D;
+					if (eyesMotor) {
+						eyesMotor.Transform = new CFrame(0, math.sin(animTime * 2) * 0.1, 0);
+					}
+				} else if (behavior === "tank") {
+					// Brute (Demon): Marcha pesada con oscilación imponente de hombreras y cuernos
+					const shoulderMotor = visualModel.FindFirstChild("shoulders_geom_Motor", true) as Motor6D;
+					if (shoulderMotor) {
+						shoulderMotor.Transform = CFrame.Angles(
+							math.sin(animTime * 0.8) * 0.12,
+							0,
+							math.cos(animTime * 0.8) * 0.08,
+						);
+					}
+					const hornsMotor = visualModel.FindFirstChild("horns_geom_Motor", true) as Motor6D;
+					if (hornsMotor) {
+						hornsMotor.Transform = CFrame.Angles(math.sin(animTime * 0.8) * 0.1, 0, 0);
+					}
+				} else if (behavior === "fast") {
+					// Skimmer (Viper): Aleteo supersónico de extremidades y ondulación de cabeza
+					const leftArm = visualModel.FindFirstChild("left arm_geom_Motor", true) as Motor6D;
+					const rightArm = visualModel.FindFirstChild("right arm_geom_Motor", true) as Motor6D;
+					if (leftArm && rightArm) {
+						const flap = math.sin(animTime * 2.2) * 0.35;
+						leftArm.Transform = CFrame.Angles(0, 0, flap);
+						rightArm.Transform = CFrame.Angles(0, 0, -flap);
+					}
+					const head = visualModel.FindFirstChild("head_geom_Motor", true) as Motor6D;
+					if (head) {
+						head.Transform = CFrame.Angles(0, math.sin(animTime * 1.5) * 0.2, 0);
+					}
+				} else if (behavior === "shooter") {
+					// Turret (Drone): Rotación continua de propulsores / turbinas giroscópicas
+					const propL1 = visualModel.FindFirstChild("left front propeller_geom_Motor", true) as Motor6D;
+					const propR1 = visualModel.FindFirstChild("right front propeller_geom_Motor", true) as Motor6D;
+					const propL2 = visualModel.FindFirstChild("left rear propeller_geom_Motor", true) as Motor6D;
+					const propR2 = visualModel.FindFirstChild("right rear propeller_geom_Motor", true) as Motor6D;
+					const rotAngle = animTime * 3.5;
+					if (propL1) propL1.Transform = CFrame.Angles(0, rotAngle, 0);
+					if (propR1) propR1.Transform = CFrame.Angles(0, -rotAngle, 0);
+					if (propL2) propL2.Transform = CFrame.Angles(0, rotAngle, 0);
+					if (propR2) propR2.Transform = CFrame.Angles(0, -rotAngle, 0);
+				} else if (behavior === "boss") {
+					// Void Overlord: Latido cósmico amenazante de la armadura y cuernos
+					const armor = visualModel.FindFirstChild("armor_geom_Motor", true) as Motor6D;
+					if (armor) {
+						armor.Transform = new CFrame(0, math.sin(animTime * 0.5) * 0.4, 0).mul(
+							CFrame.Angles(0, math.sin(animTime * 0.3) * 0.08, 0),
+						);
+					}
+					const horns = visualModel.FindFirstChild("horns_geom_Motor", true) as Motor6D;
+					if (horns) {
+						horns.Transform = CFrame.Angles(math.sin(animTime * 0.5) * 0.15, 0, 0);
+					}
+				}
 			}
 		}
 	}
