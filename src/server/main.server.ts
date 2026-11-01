@@ -475,6 +475,28 @@ debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
 	} else if (action === "add_time") {
 		gameElapsedTime += 60;
 		print(`[Debug] Tiempo adelantado a ${gameElapsedTime}s`);
+	} else if (action === "unlock_all_weapons") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		if (inventory) {
+			const b = inventory.FindFirstChild("void_boomerang") as IntValue;
+			if (b) b.Value = 3;
+			const p = inventory.FindFirstChild("plasma_blaster") as IntValue;
+			if (p) p.Value = 2;
+			const o = inventory.FindFirstChild("chrono_orbits") as IntValue;
+			if (o) o.Value = 3;
+			print(`[Debug] ${player.Name} ha desbloqueado todas las armas a nivel máximo`);
+		}
+	} else if (action === "give_plasma") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const p = inventory?.FindFirstChild("plasma_blaster") as IntValue;
+		if (p) p.Value = math.min(2, p.Value + 1);
+	} else if (action === "give_orbits") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const o = inventory?.FindFirstChild("chrono_orbits") as IntValue;
+		if (o) o.Value = math.min(3, o.Value + 1);
+	} else if (action === "give_speed") {
+		const hum = char?.FindFirstChildOfClass("Humanoid");
+		if (hum) hum.WalkSpeed += 6;
 	}
 });
 

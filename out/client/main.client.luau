@@ -217,7 +217,7 @@ dbCorner.CornerRadius = UDim.new(0, 6)
 dbCorner.Parent = debugToggleBtn
 local debugPanel = Instance.new("Frame")
 debugPanel.Name = "DebugPanel"
-debugPanel.Size = UDim2.new(0, 220, 0, 310)
+debugPanel.Size = UDim2.new(0, 220, 0, 460)
 debugPanel.Position = UDim2.new(0.98, -220, 0.07, 0)
 debugPanel.BackgroundColor3 = Color3.new(0.1, 0.12, 0.16)
 debugPanel.BorderSizePixel = 0
@@ -241,6 +241,18 @@ dpPadding.Parent = debugPanel
 local debugButtons = { {
 	id = "instant_level_up",
 	label = "⭐ Subir de Nivel",
+}, {
+	id = "unlock_all_weapons",
+	label = "⚡ TODAS LAS ARMAS (MÁX)",
+}, {
+	id = "give_plasma",
+	label = "🟣 +1 Nivel Bláster",
+}, {
+	id = "give_orbits",
+	label = "🪐 +1 Nivel Órbitas",
+}, {
+	id = "give_speed",
+	label = "👟 +6 Velocidad",
 }, {
 	id = "spawn_boss",
 	label = "👑 Invocar Boss",

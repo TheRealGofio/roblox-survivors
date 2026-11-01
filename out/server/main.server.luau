@@ -502,6 +502,52 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 	elseif action == "add_time" then
 		gameElapsedTime += 60
 		print(`[Debug] Tiempo adelantado a {gameElapsedTime}s`)
+	elseif action == "unlock_all_weapons" then
+		local inventory = player:FindFirstChild("Inventory")
+		if inventory then
+			local b = inventory:FindFirstChild("void_boomerang")
+			if b then
+				b.Value = 3
+			end
+			local p = inventory:FindFirstChild("plasma_blaster")
+			if p then
+				p.Value = 2
+			end
+			local o = inventory:FindFirstChild("chrono_orbits")
+			if o then
+				o.Value = 3
+			end
+			print(`[Debug] {player.Name} ha desbloqueado todas las armas a nivel máximo`)
+		end
+	elseif action == "give_plasma" then
+		local inventory = player:FindFirstChild("Inventory")
+		local _result_1 = inventory
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("plasma_blaster")
+		end
+		local p = _result_1
+		if p then
+			p.Value = math.min(2, p.Value + 1)
+		end
+	elseif action == "give_orbits" then
+		local inventory = player:FindFirstChild("Inventory")
+		local _result_1 = inventory
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("chrono_orbits")
+		end
+		local o = _result_1
+		if o then
+			o.Value = math.min(3, o.Value + 1)
+		end
+	elseif action == "give_speed" then
+		local _hum = char
+		if _hum ~= nil then
+			_hum = _hum:FindFirstChildOfClass("Humanoid")
+		end
+		local hum = _hum
+		if hum then
+			hum.WalkSpeed += 6
+		end
 	end
 end)
 -- 10. Función para crear cualquier enemigo de ENEMY_TYPES

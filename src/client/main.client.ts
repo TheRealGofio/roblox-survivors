@@ -219,7 +219,7 @@ dbCorner.Parent = debugToggleBtn;
 
 const debugPanel = new Instance("Frame");
 debugPanel.Name = "DebugPanel";
-debugPanel.Size = new UDim2(0, 220, 0, 310);
+debugPanel.Size = new UDim2(0, 220, 0, 460);
 debugPanel.Position = new UDim2(0.98, -220, 0.07, 0);
 debugPanel.BackgroundColor3 = new Color3(0.1, 0.12, 0.16);
 debugPanel.BorderSizePixel = 0;
@@ -247,6 +247,10 @@ dpPadding.Parent = debugPanel;
 
 const debugButtons = [
 	{ id: "instant_level_up", label: "⭐ Subir de Nivel" },
+	{ id: "unlock_all_weapons", label: "⚡ TODAS LAS ARMAS (MÁX)" },
+	{ id: "give_plasma", label: "🟣 +1 Nivel Bláster" },
+	{ id: "give_orbits", label: "🪐 +1 Nivel Órbitas" },
+	{ id: "give_speed", label: "👟 +6 Velocidad" },
 	{ id: "spawn_boss", label: "👑 Invocar Boss" },
 	{ id: "spawn_chest", label: "📦 Spawn Cofre" },
 	{ id: "spawn_magnet", label: "🧲 Spawn Imán" },
