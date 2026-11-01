@@ -269,12 +269,36 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 			}
 
 			enemy.CanCollide = false;
-			TweenService.Create(enemy, new TweenInfo(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size: new Vector3(0.1, 0.1, 0.1),
+			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+			if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
+
+			// Reproducir animación oficial de Muerte (Death) si existe
+			const visualModel = enemy.FindFirstChild("VisualModel") as Model;
+			let deathDuration = 0.25;
+
+			if (visualModel) {
+				const animController = visualModel.FindFirstChildOfClass("AnimationController") ?? visualModel.FindFirstChildOfClass("Humanoid");
+				const animator = animController?.FindFirstChildOfClass("Animator");
+				const animObjs = visualModel.FindFirstChild("AnimationObjects") as Folder;
+				const deathAnim = animObjs?.FindFirstChild("Death") as Animation;
+
+				if (animator && deathAnim) {
+					// Detener tracks anteriores
+					for (const track of animator.GetPlayingAnimationTracks()) {
+						track.Stop(0.1);
+					}
+					const deathTrack = animator.LoadAnimation(deathAnim);
+					deathTrack.Looped = false;
+					deathTrack.Play();
+					deathDuration = math.clamp(deathTrack.Length, 0.4, 1.2);
+				}
+			}
+
+			TweenService.Create(enemy, new TweenInfo(deathDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Transparency: 1,
 			}).Play();
 
-			task.delay(0.2, () => {
+			task.delay(deathDuration, () => {
 				enemy.Destroy();
 			});
 		}
@@ -656,8 +680,6 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 
 			const primary = visualClone.PrimaryPart ?? (visualClone.FindFirstChildWhichIsA("BasePart", true) as BasePart);
 			if (primary) {
-				// Soldar únicamente la parte raíz del modelo visual a la hitbox física del enemigo
-				// Las demás partes se articulan dinámicamente mediante sus Motor6D
 				for (const desc of visualClone.GetDescendants()) {
 					if (desc.IsA("BasePart")) {
 						desc.CanCollide = false;
@@ -673,6 +695,32 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 
 				visualClone.PivotTo(new CFrame(enemy.Position));
 				visualClone.Parent = enemy;
+
+				// Cargar y reproducir la animación oficial nativa (Run o Walk)
+				const animController = visualClone.FindFirstChildOfClass("AnimationController") ?? visualClone.FindFirstChildOfClass("Humanoid");
+				if (animController) {
+					let animator = animController.FindFirstChildOfClass("Animator");
+					if (!animator) {
+						animator = new Instance("Animator");
+						animator.Parent = animController;
+					}
+
+					const animObjs = visualClone.FindFirstChild("AnimationObjects") as Folder;
+					if (animObjs) {
+						// Priorizar Run -> Walk -> Fast_Flying -> Flying_Idle -> Idle
+						const runAnim = (animObjs.FindFirstChild("Run") ??
+							animObjs.FindFirstChild("Walk") ??
+							animObjs.FindFirstChild("Fast_Flying") ??
+							animObjs.FindFirstChild("Flying_Idle") ??
+							animObjs.FindFirstChild("Idle")) as Animation;
+
+						if (runAnim) {
+							const track = animator.LoadAnimation(runAnim);
+							track.Looped = true;
+							track.Play();
+						}
+					}
+				}
 
 				// La parte física actúa como hitbox y collider invisible
 				enemy.Transparency = 1;
@@ -845,85 +893,13 @@ RunService.Heartbeat.Connect(() => {
 				enemy.CFrame = new CFrame(enemy.Position, enemy.Position.add(dirToCenter));
 			}
 
-			// 12.1 Animaciones procedurales dinámicas y esqueléticas (Bones / Rigging)
+			// 12.1 Animaciones: Los modelos reproducen sus AnimationTracks oficiales (Run/Walk/Death) mediante su Animator.
+			// La orientación del modelo sigue la marcha física del enemigo hacia el objetivo.
 			const visualModel = enemy.FindFirstChild("VisualModel") as Model;
 			if (visualModel) {
-				const animTime = currentTime * 7.0;
-
-				if (behavior === "melee") {
-					// GreenSpikyBlob: Deformación esquelética de la cabeza/púas y bamboleo
-					const headBone = visualModel.FindFirstChild("Head", true) as Bone;
-					if (headBone) {
-						headBone.Transform = CFrame.Angles(
-							math.sin(animTime) * 0.18,
-							0,
-							math.cos(animTime) * 0.12,
-						).mul(new CFrame(0, math.sin(animTime * 2) * 0.3, 0));
-					}
-					const head2Bone = visualModel.FindFirstChild("Head2", true) as Bone;
-					if (head2Bone) {
-						head2Bone.Transform = CFrame.Angles(math.sin(animTime * 1.5) * 0.15, 0, 0);
-					}
-				} else if (behavior === "tank") {
-					// Demon: Ciclo de carrera de piernas y balanceo de torso
-					const leftLeg = visualModel.FindFirstChild("UpperLeg.L", true) as Bone;
-					const rightLeg = visualModel.FindFirstChild("UpperLeg.R", true) as Bone;
-					if (leftLeg && rightLeg) {
-						const stride = math.sin(animTime * 0.8) * 0.45;
-						leftLeg.Transform = CFrame.Angles(stride, 0, 0);
-						rightLeg.Transform = CFrame.Angles(-stride, 0, 0);
-					}
-					const torso = visualModel.FindFirstChild("Torso", true) as Bone;
-					if (torso) {
-						torso.Transform = CFrame.Angles(0, math.sin(animTime * 0.8) * 0.12, 0).mul(
-							new CFrame(0, math.abs(math.sin(animTime * 0.8)) * 0.2, 0),
-						);
-					}
-					const leftArm = visualModel.FindFirstChild("UpperArm.L", true) as Bone;
-					const rightArm = visualModel.FindFirstChild("UpperArm.R", true) as Bone;
-					if (leftArm && rightArm) {
-						const armSwing = math.sin(animTime * 0.8) * 0.35;
-						leftArm.Transform = CFrame.Angles(-armSwing, 0, 0);
-						rightArm.Transform = CFrame.Angles(armSwing, 0, 0);
-					}
-				} else if (behavior === "fast") {
-					// Birb: Vuelo rasante con balanceo y aleteo rítmico
-					const rootPart = visualModel.PrimaryPart;
-					if (rootPart) {
-						visualModel.PivotTo(
-							enemy.CFrame.mul(
-								CFrame.Angles(
-									math.sin(animTime * 1.2) * 0.1,
-									0,
-									math.sin(animTime * 2.5) * 0.2,
-								).add(new Vector3(0, math.sin(animTime * 2.0) * 0.4, 0)),
-							),
-						);
-					}
-				} else if (behavior === "shooter") {
-					// Wizard: Levitación mística con báculo / rotación de orbe
-					const torso = visualModel.FindFirstChild("Torso", true) as Bone;
-					if (torso) {
-						torso.Transform = CFrame.Angles(0, math.sin(animTime * 0.5) * 0.15, 0).mul(
-							new CFrame(0, math.sin(animTime * 0.7) * 0.35, 0),
-						);
-					}
-					const armR = visualModel.FindFirstChild("UpperArm.R", true) as Bone;
-					if (armR) {
-						armR.Transform = CFrame.Angles(0.6 + math.sin(animTime) * 0.2, 0, 0);
-					}
-				} else if (behavior === "boss") {
-					// Alpaking: Trote regio y cabeceo imponente de emperador
-					const rootPart = visualModel.PrimaryPart;
-					if (rootPart) {
-						visualModel.PivotTo(
-							enemy.CFrame.mul(
-								CFrame.Angles(0, 0, math.sin(animTime * 0.9) * 0.08).add(
-									new Vector3(0, math.abs(math.sin(animTime * 1.2)) * 0.4, 0),
-								),
-							),
-						);
-					}
+				const primary = visualModel.PrimaryPart;
+				if (primary) {
+					primary.CFrame = enemy.CFrame;
 				}
 			}
 		}

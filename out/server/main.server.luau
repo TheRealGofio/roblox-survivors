@@ -266,11 +266,41 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 				spawnExpGem(deathPos, xpReward)
 			end
 			enemy.CanCollide = false
-			TweenService:Create(enemy, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Size = Vector3.new(0.1, 0.1, 0.1),
+			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+			if bodyVel then
+				bodyVel.Velocity = Vector3.new(0, 0, 0)
+			end
+			-- Reproducir animación oficial de Muerte (Death) si existe
+			local visualModel = enemy:FindFirstChild("VisualModel")
+			local deathDuration = 0.25
+			if visualModel then
+				local animController = visualModel:FindFirstChildOfClass("AnimationController") or visualModel:FindFirstChildOfClass("Humanoid")
+				local _animator = animController
+				if _animator ~= nil then
+					_animator = _animator:FindFirstChildOfClass("Animator")
+				end
+				local animator = _animator
+				local animObjs = visualModel:FindFirstChild("AnimationObjects")
+				local _result = animObjs
+				if _result ~= nil then
+					_result = _result:FindFirstChild("Death")
+				end
+				local deathAnim = _result
+				if animator and deathAnim then
+					-- Detener tracks anteriores
+					for _, track in animator:GetPlayingAnimationTracks() do
+						track:Stop(0.1)
+					end
+					local deathTrack = animator:LoadAnimation(deathAnim)
+					deathTrack.Looped = false
+					deathTrack:Play()
+					deathDuration = math.clamp(deathTrack.Length, 0.4, 1.2)
+				end
+			end
+			TweenService:Create(enemy, TweenInfo.new(deathDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Transparency = 1,
 			}):Play()
-			task.delay(0.2, function()
+			task.delay(deathDuration, function()
 				enemy:Destroy()
 			end)
 		end
@@ -730,8 +760,6 @@ function createEnemyInstance(config, index)
 			visualClone.Name = "VisualModel"
 			local primary = visualClone.PrimaryPart or (visualClone:FindFirstChildWhichIsA("BasePart", true))
 			if primary then
-				-- Soldar únicamente la parte raíz del modelo visual a la hitbox física del enemigo
-				-- Las demás partes se articulan dinámicamente mediante sus Motor6D
 				for _, desc in visualClone:GetDescendants() do
 					if desc:IsA("BasePart") then
 						desc.CanCollide = false
@@ -745,6 +773,25 @@ function createEnemyInstance(config, index)
 				rootWeld.Parent = enemy
 				visualClone:PivotTo(CFrame.new(enemy.Position))
 				visualClone.Parent = enemy
+				-- Cargar y reproducir la animación oficial nativa (Run o Walk)
+				local animController = visualClone:FindFirstChildOfClass("AnimationController") or visualClone:FindFirstChildOfClass("Humanoid")
+				if animController then
+					local animator = animController:FindFirstChildOfClass("Animator")
+					if not animator then
+						animator = Instance.new("Animator")
+						animator.Parent = animController
+					end
+					local animObjs = visualClone:FindFirstChild("AnimationObjects")
+					if animObjs then
+						-- Priorizar Run -> Walk -> Fast_Flying -> Flying_Idle -> Idle
+						local runAnim = (animObjs:FindFirstChild("Run") or animObjs:FindFirstChild("Walk") or animObjs:FindFirstChild("Fast_Flying") or animObjs:FindFirstChild("Flying_Idle") or animObjs:FindFirstChild("Idle"))
+						if runAnim then
+							local track = animator:LoadAnimation(runAnim)
+							track.Looped = true
+							track:Play()
+						end
+					end
+				end
 				-- La parte física actúa como hitbox y collider invisible
 				enemy.Transparency = 1
 			end
@@ -943,74 +990,13 @@ RunService.Heartbeat:Connect(function()
 				bodyVel.Velocity = Vector3.new(dirToCenter.X * 5, 0, dirToCenter.Z * 5)
 				enemy.CFrame = CFrame.new(enemy.Position, enemy.Position + dirToCenter)
 			end
-			-- 12.1 Animaciones procedurales dinámicas y esqueléticas (Bones / Rigging)
+			-- 12.1 Animaciones: Los modelos reproducen sus AnimationTracks oficiales (Run/Walk/Death) mediante su Animator.
+			-- La orientación del modelo sigue la marcha física del enemigo hacia el objetivo.
 			local visualModel = enemy:FindFirstChild("VisualModel")
 			if visualModel then
-				local animTime = currentTime * 7.0
-				if behavior == "melee" then
-					-- GreenSpikyBlob: Deformación esquelética de la cabeza/púas y bamboleo
-					local headBone = visualModel:FindFirstChild("Head", true)
-					if headBone then
-						local _exp = CFrame.Angles(math.sin(animTime) * 0.18, 0, math.cos(animTime) * 0.12)
-						local _cFrame = CFrame.new(0, math.sin(animTime * 2) * 0.3, 0)
-						headBone.Transform = _exp * _cFrame
-					end
-					local head2Bone = visualModel:FindFirstChild("Head2", true)
-					if head2Bone then
-						head2Bone.Transform = CFrame.Angles(math.sin(animTime * 1.5) * 0.15, 0, 0)
-					end
-				elseif behavior == "tank" then
-					-- Demon: Ciclo de carrera de piernas y balanceo de torso
-					local leftLeg = visualModel:FindFirstChild("UpperLeg.L", true)
-					local rightLeg = visualModel:FindFirstChild("UpperLeg.R", true)
-					if leftLeg and rightLeg then
-						local stride = math.sin(animTime * 0.8) * 0.45
-						leftLeg.Transform = CFrame.Angles(stride, 0, 0)
-						rightLeg.Transform = CFrame.Angles(-stride, 0, 0)
-					end
-					local torso = visualModel:FindFirstChild("Torso", true)
-					if torso then
-						local _exp = CFrame.Angles(0, math.sin(animTime * 0.8) * 0.12, 0)
-						local _cFrame = CFrame.new(0, math.abs(math.sin(animTime * 0.8)) * 0.2, 0)
-						torso.Transform = _exp * _cFrame
-					end
-					local leftArm = visualModel:FindFirstChild("UpperArm.L", true)
-					local rightArm = visualModel:FindFirstChild("UpperArm.R", true)
-					if leftArm and rightArm then
-						local armSwing = math.sin(animTime * 0.8) * 0.35
-						leftArm.Transform = CFrame.Angles(-armSwing, 0, 0)
-						rightArm.Transform = CFrame.Angles(armSwing, 0, 0)
-					end
-				elseif behavior == "fast" then
-					-- Birb: Vuelo rasante con balanceo y aleteo rítmico
-					local rootPart = visualModel.PrimaryPart
-					if rootPart then
-						local _cFrame = enemy.CFrame
-						local _exp = CFrame.Angles(math.sin(animTime * 1.2) * 0.1, 0, math.sin(animTime * 2.5) * 0.2)
-						local _vector3 = Vector3.new(0, math.sin(animTime * 2.0) * 0.4, 0)
-						visualModel:PivotTo(_cFrame * (_exp + _vector3))
-					end
-				elseif behavior == "shooter" then
-					-- Wizard: Levitación mística con báculo / rotación de orbe
-					local torso = visualModel:FindFirstChild("Torso", true)
-					if torso then
-						local _exp = CFrame.Angles(0, math.sin(animTime * 0.5) * 0.15, 0)
-						local _cFrame = CFrame.new(0, math.sin(animTime * 0.7) * 0.35, 0)
-						torso.Transform = _exp * _cFrame
-					end
-					local armR = visualModel:FindFirstChild("UpperArm.R", true)
-					if armR then
-						armR.Transform = CFrame.Angles(0.6 + math.sin(animTime) * 0.2, 0, 0)
-					end
-				elseif behavior == "boss" then
-					-- Alpaking: Trote regio y cabeceo imponente de emperador
-					local rootPart = visualModel.PrimaryPart
-					if rootPart then
-						local _cFrame = enemy.CFrame
-						local _exp = CFrame.Angles(0, 0, math.sin(animTime * 0.9) * 0.08)
-						local _vector3 = Vector3.new(0, math.abs(math.sin(animTime * 1.2)) * 0.4, 0)
-						visualModel:PivotTo(_cFrame * (_exp + _vector3))
-					end
+				local primary = visualModel.PrimaryPart
+				if primary then
+					primary.CFrame = enemy.CFrame
 				end
 			end
 		end
