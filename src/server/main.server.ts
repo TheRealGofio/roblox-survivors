@@ -104,6 +104,13 @@ if (!bossAlertEvent) {
 	bossAlertEvent.Parent = networkFolder;
 }
 
+let debugActionEvent = networkFolder.FindFirstChild("DebugAction") as RemoteEvent;
+if (!debugActionEvent) {
+	debugActionEvent = new Instance("RemoteEvent");
+	debugActionEvent.Name = "DebugAction";
+	debugActionEvent.Parent = networkFolder;
+}
+
 // 4. Función generadora de Gemas (Cristales de EXP)
 function spawnExpGem(position: Vector3, expValue = 10) {
 	const gem = new Instance("Part");
@@ -423,6 +430,52 @@ selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 
 	isGamePaused = false;
 	print("[r-survivors] Juego reanudado.");
+});
+
+// Manejo de acciones del Debug Panel
+debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
+	const action = actionArg as string;
+	const char = player.Character;
+	const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+
+	if (action === "instant_level_up") {
+		const leaderstats = player.FindFirstChild("leaderstats") as Folder;
+		const lvlStat = leaderstats?.FindFirstChild("Level") as IntValue;
+		if (lvlStat) {
+			lvlStat.Value += 1;
+			isGamePaused = true;
+			for (const enemy of enemiesFolder.GetChildren()) {
+				if (enemy.IsA("BasePart")) {
+					const vel = enemy.FindFirstChildOfClass("BodyVelocity");
+					if (vel) vel.Velocity = new Vector3(0, 0, 0);
+				}
+			}
+			levelUpEvent.FireClient(player, lvlStat.Value);
+		}
+	} else if (action === "spawn_boss") {
+		bossAlertEvent.FireAllClients("¡BOSS INVOCADO POR DEBUG!");
+		const bossPart = createEnemyInstance(ENEMY_TYPES.overlord_boss, 9999);
+		if (hrp) {
+			bossPart.Position = hrp.Position.add(new Vector3(0, 4, 25));
+		}
+	} else if (action === "spawn_chest") {
+		if (hrp) spawnSupplyChest(hrp.Position.add(new Vector3(4, 0, 4)));
+	} else if (action === "spawn_magnet") {
+		if (hrp) spawnMagnetItem(hrp.Position.add(new Vector3(-4, 0, 4)));
+	} else if (action === "kill_all_enemies") {
+		for (const enemy of enemiesFolder.GetChildren()) {
+			if (enemy.IsA("BasePart")) {
+				spawnExpGem(enemy.Position, 15);
+				enemy.Destroy();
+			}
+		}
+	} else if (action === "heal_player") {
+		const hum = char?.FindFirstChildOfClass("Humanoid");
+		if (hum) hum.Health = hum.MaxHealth;
+	} else if (action === "add_time") {
+		gameElapsedTime += 60;
+		print(`[Debug] Tiempo adelantado a ${gameElapsedTime}s`);
+	}
 });
 
 // 10. Función para crear cualquier enemigo de ENEMY_TYPES

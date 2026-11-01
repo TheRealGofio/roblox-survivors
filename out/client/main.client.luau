@@ -196,6 +196,112 @@ local collectGemEvent = if networkFolder then (networkFolder:WaitForChild("Colle
 local levelUpEvent = if networkFolder then (networkFolder:WaitForChild("LevelUp", 5)) else nil
 local selectUpgradeEvent = if networkFolder then (networkFolder:WaitForChild("SelectUpgrade", 5)) else nil
 local bossAlertEvent = if networkFolder then (networkFolder:WaitForChild("BossAlert", 5)) else nil
+local debugActionEvent = if networkFolder then (networkFolder:WaitForChild("DebugAction", 5)) else nil
+-- Panel de Debug Plegable (Tecla F2 o Botón "DEBUG" en pantalla)
+local debugGui = Instance.new("ScreenGui")
+debugGui.Name = "DebugGui"
+debugGui.ResetOnSpawn = false
+debugGui.Parent = playerGui
+local debugToggleBtn = Instance.new("TextButton")
+debugToggleBtn.Name = "DebugToggle"
+debugToggleBtn.Size = UDim2.new(0, 90, 0, 30)
+debugToggleBtn.Position = UDim2.new(0.98, -90, 0.02, 0)
+debugToggleBtn.BackgroundColor3 = Color3.new(0.18, 0.2, 0.28)
+debugToggleBtn.Font = Enum.Font.FredokaOne
+debugToggleBtn.Text = "🛠️ DEBUG"
+debugToggleBtn.TextColor3 = Color3.new(1, 0.85, 0.2)
+debugToggleBtn.TextSize = 13
+debugToggleBtn.Parent = debugGui
+local dbCorner = Instance.new("UICorner")
+dbCorner.CornerRadius = UDim.new(0, 6)
+dbCorner.Parent = debugToggleBtn
+local debugPanel = Instance.new("Frame")
+debugPanel.Name = "DebugPanel"
+debugPanel.Size = UDim2.new(0, 220, 0, 310)
+debugPanel.Position = UDim2.new(0.98, -220, 0.07, 0)
+debugPanel.BackgroundColor3 = Color3.new(0.1, 0.12, 0.16)
+debugPanel.BorderSizePixel = 0
+debugPanel.Visible = false
+debugPanel.Parent = debugGui
+local dpCorner = Instance.new("UICorner")
+dpCorner.CornerRadius = UDim.new(0, 8)
+dpCorner.Parent = debugPanel
+local dpStroke = Instance.new("UIStroke")
+dpStroke.Color = Color3.new(1, 0.85, 0.2)
+dpStroke.Thickness = 1.5
+dpStroke.Parent = debugPanel
+local dpLayout = Instance.new("UIListLayout")
+dpLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+dpLayout.Padding = UDim.new(0, 6)
+dpLayout.Parent = debugPanel
+local dpPadding = Instance.new("UIPadding")
+dpPadding.PaddingTop = UDim.new(0, 8)
+dpPadding.PaddingBottom = UDim.new(0, 8)
+dpPadding.Parent = debugPanel
+local debugButtons = { {
+	id = "instant_level_up",
+	label = "⭐ Subir de Nivel",
+}, {
+	id = "spawn_boss",
+	label = "👑 Invocar Boss",
+}, {
+	id = "spawn_chest",
+	label = "📦 Spawn Cofre",
+}, {
+	id = "spawn_magnet",
+	label = "🧲 Spawn Imán",
+}, {
+	id = "heal_player",
+	label = "❤️ Curar Jugador",
+}, {
+	id = "add_time",
+	label = "⏱️ +60s Partida",
+}, {
+	id = "kill_all_enemies",
+	label = "💥 Aniquilar Enemigos",
+} }
+-- ▼ ReadonlyArray.forEach ▼
+local _callback = function(btnInfo)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0.9, 0, 0, 32)
+	b.BackgroundColor3 = Color3.new(0.2, 0.24, 0.32)
+	b.Font = Enum.Font.FredokaOne
+	b.Text = btnInfo.label
+	b.TextColor3 = Color3.new(1, 1, 1)
+	b.TextSize = 13
+	b.Parent = debugPanel
+	local bCorner = Instance.new("UICorner")
+	bCorner.CornerRadius = UDim.new(0, 6)
+	bCorner.Parent = b
+	b.MouseButton1Click:Connect(function()
+		if not debugActionEvent then
+			local net = Workspace:FindFirstChild("Network")
+			if net then
+				debugActionEvent = net:FindFirstChild("DebugAction")
+			end
+		end
+		local _result = debugActionEvent
+		if _result ~= nil then
+			_result:FireServer(btnInfo.id)
+		end
+	end)
+end
+for _k, _v in debugButtons do
+	_callback(_v, _k - 1, debugButtons)
+end
+-- ▲ ReadonlyArray.forEach ▲
+debugToggleBtn.MouseButton1Click:Connect(function()
+	debugPanel.Visible = not debugPanel.Visible
+end)
+-- Atajo de teclado F2 para abrir/cerrar debug
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return nil
+	end
+	if input.KeyCode == Enum.KeyCode.F2 then
+		debugPanel.Visible = not debugPanel.Visible
+	end
+end)
 -- Banner Alerta de Boss en Pantalla
 local bossBanner = Instance.new("TextLabel")
 bossBanner.Name = "BossBanner"
@@ -532,12 +638,12 @@ local function showLevelUpModal()
 	-- Filtrar y tomar hasta 3 opciones
 	-- ▼ ReadonlyArray.filter ▼
 	local _newValue = {}
-	local _callback = function(opt)
+	local _callback_1 = function(opt)
 		return opt.available
 	end
 	local _length = 0
 	for _k, _v in allOptions do
-		if _callback(_v, _k - 1, allOptions) == true then
+		if _callback_1(_v, _k - 1, allOptions) == true then
 			_length += 1
 			_newValue[_length] = _v
 		end
@@ -1068,11 +1174,11 @@ RunService.Heartbeat:Connect(function(dt)
 	if orbitsLvl <= 0 then
 		if #currentOrbInstances > 0 then
 			-- ▼ ReadonlyArray.forEach ▼
-			local _callback = function(o)
+			local _callback_1 = function(o)
 				return o:Destroy()
 			end
 			for _k, _v in currentOrbInstances do
-				_callback(_v, _k - 1, currentOrbInstances)
+				_callback_1(_v, _k - 1, currentOrbInstances)
 			end
 			-- ▲ ReadonlyArray.forEach ▲
 			currentOrbInstances = {}
@@ -1115,7 +1221,7 @@ RunService.Heartbeat:Connect(function(dt)
 	local enemiesFolder = Workspace:FindFirstChild("Enemies")
 	local now = os.clock()
 	-- ▼ ReadonlyArray.forEach ▼
-	local _callback = function(orb, i)
+	local _callback_1 = function(orb, i)
 		local angleOffset = (i / orbCount) * math.pi * 2
 		local totalAngle = currentOrbAngle + angleOffset
 		local _position = hrp.Position
@@ -1181,7 +1287,7 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	end
 	for _k, _v in currentOrbInstances do
-		_callback(_v, _k - 1, currentOrbInstances)
+		_callback_1(_v, _k - 1, currentOrbInstances)
 	end
 	-- ▲ ReadonlyArray.forEach ▲
 end)

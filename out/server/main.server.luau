@@ -95,6 +95,12 @@ if not bossAlertEvent then
 	bossAlertEvent.Name = "BossAlert"
 	bossAlertEvent.Parent = networkFolder
 end
+local debugActionEvent = networkFolder:FindFirstChild("DebugAction")
+if not debugActionEvent then
+	debugActionEvent = Instance.new("RemoteEvent")
+	debugActionEvent.Name = "DebugAction"
+	debugActionEvent.Parent = networkFolder
+end
 -- 4. Función generadora de Gemas (Cristales de EXP)
 local function spawnExpGem(position, expValue)
 	if expValue == nil then
@@ -427,8 +433,79 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 	isGamePaused = false
 	print("[r-survivors] Juego reanudado.")
 end)
+-- Manejo de acciones del Debug Panel
+local createEnemyInstance
+debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
+	local action = actionArg
+	local char = player.Character
+	local _result = char
+	if _result ~= nil then
+		_result = _result:FindFirstChild("HumanoidRootPart")
+	end
+	local hrp = _result
+	if action == "instant_level_up" then
+		local leaderstats = player:FindFirstChild("leaderstats")
+		local _result_1 = leaderstats
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("Level")
+		end
+		local lvlStat = _result_1
+		if lvlStat then
+			lvlStat.Value += 1
+			isGamePaused = true
+			for _, enemy in enemiesFolder:GetChildren() do
+				if enemy:IsA("BasePart") then
+					local vel = enemy:FindFirstChildOfClass("BodyVelocity")
+					if vel then
+						vel.Velocity = Vector3.new(0, 0, 0)
+					end
+				end
+			end
+			levelUpEvent:FireClient(player, lvlStat.Value)
+		end
+	elseif action == "spawn_boss" then
+		bossAlertEvent:FireAllClients("¡BOSS INVOCADO POR DEBUG!")
+		local bossPart = createEnemyInstance(ENEMY_TYPES.overlord_boss, 9999)
+		if hrp then
+			local _position = hrp.Position
+			local _vector3 = Vector3.new(0, 4, 25)
+			bossPart.Position = _position + _vector3
+		end
+	elseif action == "spawn_chest" then
+		if hrp then
+			local _position = hrp.Position
+			local _vector3 = Vector3.new(4, 0, 4)
+			spawnSupplyChest(_position + _vector3)
+		end
+	elseif action == "spawn_magnet" then
+		if hrp then
+			local _position = hrp.Position
+			local _vector3 = Vector3.new(-4, 0, 4)
+			spawnMagnetItem(_position + _vector3)
+		end
+	elseif action == "kill_all_enemies" then
+		for _, enemy in enemiesFolder:GetChildren() do
+			if enemy:IsA("BasePart") then
+				spawnExpGem(enemy.Position, 15)
+				enemy:Destroy()
+			end
+		end
+	elseif action == "heal_player" then
+		local _hum = char
+		if _hum ~= nil then
+			_hum = _hum:FindFirstChildOfClass("Humanoid")
+		end
+		local hum = _hum
+		if hum then
+			hum.Health = hum.MaxHealth
+		end
+	elseif action == "add_time" then
+		gameElapsedTime += 60
+		print(`[Debug] Tiempo adelantado a {gameElapsedTime}s`)
+	end
+end)
 -- 10. Función para crear cualquier enemigo de ENEMY_TYPES
-local function createEnemyInstance(config, index)
+function createEnemyInstance(config, index)
 	local enemy = Instance.new("Part")
 	enemy.Name = `{config.name}_{index}`
 	enemy.Size = config.size

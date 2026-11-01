@@ -194,6 +194,101 @@ let collectGemEvent = networkFolder ? (networkFolder.WaitForChild("CollectGem", 
 let levelUpEvent = networkFolder ? (networkFolder.WaitForChild("LevelUp", 5) as RemoteEvent) : undefined;
 let selectUpgradeEvent = networkFolder ? (networkFolder.WaitForChild("SelectUpgrade", 5) as RemoteEvent) : undefined;
 let bossAlertEvent = networkFolder ? (networkFolder.WaitForChild("BossAlert", 5) as RemoteEvent) : undefined;
+let debugActionEvent = networkFolder ? (networkFolder.WaitForChild("DebugAction", 5) as RemoteEvent) : undefined;
+
+// Panel de Debug Plegable (Tecla F2 o Botón "DEBUG" en pantalla)
+const debugGui = new Instance("ScreenGui");
+debugGui.Name = "DebugGui";
+debugGui.ResetOnSpawn = false;
+debugGui.Parent = playerGui;
+
+const debugToggleBtn = new Instance("TextButton");
+debugToggleBtn.Name = "DebugToggle";
+debugToggleBtn.Size = new UDim2(0, 90, 0, 30);
+debugToggleBtn.Position = new UDim2(0.98, -90, 0.02, 0);
+debugToggleBtn.BackgroundColor3 = new Color3(0.18, 0.2, 0.28);
+debugToggleBtn.Font = Enum.Font.FredokaOne;
+debugToggleBtn.Text = "🛠️ DEBUG";
+debugToggleBtn.TextColor3 = new Color3(1, 0.85, 0.2);
+debugToggleBtn.TextSize = 13;
+debugToggleBtn.Parent = debugGui;
+
+const dbCorner = new Instance("UICorner");
+dbCorner.CornerRadius = new UDim(0, 6);
+dbCorner.Parent = debugToggleBtn;
+
+const debugPanel = new Instance("Frame");
+debugPanel.Name = "DebugPanel";
+debugPanel.Size = new UDim2(0, 220, 0, 310);
+debugPanel.Position = new UDim2(0.98, -220, 0.07, 0);
+debugPanel.BackgroundColor3 = new Color3(0.1, 0.12, 0.16);
+debugPanel.BorderSizePixel = 0;
+debugPanel.Visible = false;
+debugPanel.Parent = debugGui;
+
+const dpCorner = new Instance("UICorner");
+dpCorner.CornerRadius = new UDim(0, 8);
+dpCorner.Parent = debugPanel;
+
+const dpStroke = new Instance("UIStroke");
+dpStroke.Color = new Color3(1, 0.85, 0.2);
+dpStroke.Thickness = 1.5;
+dpStroke.Parent = debugPanel;
+
+const dpLayout = new Instance("UIListLayout");
+dpLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center;
+dpLayout.Padding = new UDim(0, 6);
+dpLayout.Parent = debugPanel;
+
+const dpPadding = new Instance("UIPadding");
+dpPadding.PaddingTop = new UDim(0, 8);
+dpPadding.PaddingBottom = new UDim(0, 8);
+dpPadding.Parent = debugPanel;
+
+const debugButtons = [
+	{ id: "instant_level_up", label: "⭐ Subir de Nivel" },
+	{ id: "spawn_boss", label: "👑 Invocar Boss" },
+	{ id: "spawn_chest", label: "📦 Spawn Cofre" },
+	{ id: "spawn_magnet", label: "🧲 Spawn Imán" },
+	{ id: "heal_player", label: "❤️ Curar Jugador" },
+	{ id: "add_time", label: "⏱️ +60s Partida" },
+	{ id: "kill_all_enemies", label: "💥 Aniquilar Enemigos" },
+];
+
+debugButtons.forEach((btnInfo) => {
+	const b = new Instance("TextButton");
+	b.Size = new UDim2(0.9, 0, 0, 32);
+	b.BackgroundColor3 = new Color3(0.2, 0.24, 0.32);
+	b.Font = Enum.Font.FredokaOne;
+	b.Text = btnInfo.label;
+	b.TextColor3 = new Color3(1, 1, 1);
+	b.TextSize = 13;
+	b.Parent = debugPanel;
+
+	const bCorner = new Instance("UICorner");
+	bCorner.CornerRadius = new UDim(0, 6);
+	bCorner.Parent = b;
+
+	b.MouseButton1Click.Connect(() => {
+		if (!debugActionEvent) {
+			const net = Workspace.FindFirstChild("Network") as Folder;
+			if (net) debugActionEvent = net.FindFirstChild("DebugAction") as RemoteEvent;
+		}
+		debugActionEvent?.FireServer(btnInfo.id);
+	});
+});
+
+debugToggleBtn.MouseButton1Click.Connect(() => {
+	debugPanel.Visible = !debugPanel.Visible;
+});
+
+// Atajo de teclado F2 para abrir/cerrar debug
+UserInputService.InputBegan.Connect((input, processed) => {
+	if (processed) return;
+	if (input.KeyCode === Enum.KeyCode.F2) {
+		debugPanel.Visible = !debugPanel.Visible;
+	}
+});
 
 // Banner Alerta de Boss en Pantalla
 const bossBanner = new Instance("TextLabel");
