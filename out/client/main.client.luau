@@ -9,6 +9,7 @@ local UserInputService = _services.UserInputService
 local Workspace = _services.Workspace
 local WEAPONS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "weapons").WEAPONS
 local VisualEffects = TS.import(script, script.Parent, "effects").VisualEffects
+local SoundManager = TS.import(script, script.Parent, "sound").SoundManager
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 -- Estado local de pausa y partida
@@ -140,6 +141,7 @@ local function triggerDash()
 	end
 	lastDashTime = now
 	isDashing = true
+	SoundManager.playDashSound()
 	-- Determinar dirección de movimiento (o hacia adelante si está quieto)
 	local moveDir = hum.MoveDirection
 	if moveDir.Magnitude < 0.1 then
@@ -602,6 +604,7 @@ end
 -- 5. Conectar recepción de Level Up
 if levelUpEvent then
 	levelUpEvent.OnClientEvent:Connect(function()
+		SoundManager.playLevelUpSound()
 		showLevelUpModal()
 	end)
 else
@@ -615,6 +618,7 @@ else
 		local _result_1 = ev
 		if _result_1 ~= nil then
 			_result_1 = _result_1.OnClientEvent:Connect(function()
+				SoundManager.playLevelUpSound()
 				showLevelUpModal()
 			end)
 		end
@@ -837,6 +841,7 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 								_result_1:FireServer(enemy, damage, knockbackDir)
 							end
 							VisualEffects.showDamagePopup(enemy.Position, damage)
+							SoundManager.playHitSound()
 							local origColor = enemy.Color
 							enemy.Color = Color3.new(1, 1, 1)
 							task.delay(0.08, function()
@@ -1185,6 +1190,7 @@ RunService.Heartbeat:Connect(function(dt)
 					if _result_1 ~= nil then
 						_result_1:FireServer(drop)
 					end
+					SoundManager.playGemSound()
 					TweenService:Create(drop, TweenInfo.new(0.18), {
 						Size = Vector3.new(0.05, 0.05, 0.05),
 						Transparency = 1,

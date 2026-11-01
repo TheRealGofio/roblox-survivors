@@ -1,6 +1,7 @@
 import { Debris, Players, RunService, TweenService, UserInputService, Workspace } from "@rbxts/services";
 import { WEAPONS } from "shared/weapons";
 import { VisualEffects } from "./effects";
+import { SoundManager } from "./sound";
 
 const player = Players.LocalPlayer;
 const playerGui = player.WaitForChild("PlayerGui") as PlayerGui;
@@ -136,6 +137,7 @@ function triggerDash() {
 
 	lastDashTime = now;
 	isDashing = true;
+	SoundManager.playDashSound();
 
 	// Determinar dirección de movimiento (o hacia adelante si está quieto)
 	let moveDir = hum.MoveDirection;
@@ -552,6 +554,7 @@ function showLevelUpModal() {
 // 5. Conectar recepción de Level Up
 if (levelUpEvent) {
 	levelUpEvent.OnClientEvent.Connect(() => {
+		SoundManager.playLevelUpSound();
 		showLevelUpModal();
 	});
 } else {
@@ -559,6 +562,7 @@ if (levelUpEvent) {
 		const net = Workspace.WaitForChild("Network", 10) as Folder;
 		const ev = net?.WaitForChild("LevelUp", 5) as RemoteEvent;
 		ev?.OnClientEvent.Connect(() => {
+			SoundManager.playLevelUpSound();
 			showLevelUpModal();
 		});
 	});
@@ -706,6 +710,7 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 							const knockbackDir = enemy.Position.sub(blade.Position).Unit;
 							damageEvent?.FireServer(enemy, damage, knockbackDir);
 							VisualEffects.showDamagePopup(enemy.Position, damage);
+							SoundManager.playHitSound();
 
 							const origColor = enemy.Color;
 							enemy.Color = new Color3(1, 1, 1);
@@ -959,6 +964,7 @@ RunService.Heartbeat.Connect((dt) => {
 						if (net) collectGemEvent = net.FindFirstChild("CollectGem") as RemoteEvent;
 					}
 					collectGemEvent?.FireServer(drop);
+					SoundManager.playGemSound();
 
 					TweenService.Create(drop, new TweenInfo(0.18), {
 						Size: new Vector3(0.05, 0.05, 0.05),
