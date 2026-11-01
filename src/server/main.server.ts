@@ -1,10 +1,12 @@
 import { Debris, Players, RunService, TweenService, Workspace } from "@rbxts/services";
+import { ENEMY_TYPES, EnemyTypeConfig } from "shared/enemies";
 import { WEAPONS } from "shared/weapons";
 
 print("[r-survivors] Servidor inicializado con éxito.");
 
-// Estado global de juego (pausa por level up)
+// Estado global de juego y tiempo de partida
 let isGamePaused = false;
+let gameElapsedTime = 0;
 
 // 1. Crear el suelo de la arena física (Baseplate) si no existe
 let baseplate = Workspace.FindFirstChild("Baseplate") as BasePart;
@@ -39,6 +41,13 @@ if (!enemiesFolder) {
 	enemiesFolder.Parent = Workspace;
 }
 
+let enemyProjectilesFolder = Workspace.FindFirstChild("EnemyProjectiles") as Folder;
+if (!enemyProjectilesFolder) {
+	enemyProjectilesFolder = new Instance("Folder");
+	enemyProjectilesFolder.Name = "EnemyProjectiles";
+	enemyProjectilesFolder.Parent = Workspace;
+}
+
 let dropsFolder = Workspace.FindFirstChild("Drops") as Folder;
 if (!dropsFolder) {
 	dropsFolder = new Instance("Folder");
@@ -53,7 +62,7 @@ if (!networkFolder) {
 	networkFolder.Parent = Workspace;
 }
 
-// 3. RemoteEvents para Daño, Drops y Level Up
+// 3. RemoteEvents para Red
 let damageEnemyEvent = networkFolder.FindFirstChild("DamageEnemy") as RemoteEvent;
 if (!damageEnemyEvent) {
 	damageEnemyEvent = new Instance("RemoteEvent");
@@ -89,7 +98,13 @@ function spawnExpGem(position: Vector3, expValue = 10) {
 	gem.Shape = Enum.PartType.Ball;
 	gem.Size = new Vector3(1.2, 1.2, 1.2);
 	gem.Material = Enum.Material.Neon;
-	gem.Color = new Color3(0.2, 0.9, 0.35); // Verde esmeralda brillante
+	// Gemas grandes para los tanques
+	if (expValue >= 30) {
+		gem.Size = new Vector3(1.8, 1.8, 1.8);
+		gem.Color = new Color3(0.95, 0.85, 0.1); // Dorado para experiencia valiosa
+	} else {
+		gem.Color = new Color3(0.2, 0.9, 0.35); // Verde esmeralda
+	}
 	gem.CanCollide = false;
 	gem.Anchored = true;
 	gem.Position = position.add(new Vector3(0, 0.6, 0));
@@ -121,10 +136,13 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 
 		if (knockbackDir) {
 			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+			const isTank = enemy.GetAttribute("Behavior") === "tank";
+			// Los brutos gigantes tienen gran resistencia al knockback
+			const knockbackForce = isTank ? 5 : 18;
 			if (bodyVel) {
-				bodyVel.Velocity = knockbackDir.mul(18).add(new Vector3(0, 4, 0));
+				bodyVel.Velocity = knockbackDir.mul(knockbackForce).add(new Vector3(0, isTank ? 1 : 4, 0));
 				enemy.SetAttribute("InKnockback", true);
-				task.delay(0.25, () => {
+				task.delay(0.22, () => {
 					if (enemy && enemy.Parent) {
 						enemy.SetAttribute("InKnockback", false);
 					}
@@ -134,7 +152,8 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 
 		if (newHp <= 0) {
 			const deathPos = enemy.Position;
-			spawnExpGem(deathPos, 15);
+			const xpReward = (enemy.GetAttribute("XpReward") as number) ?? 15;
+			spawnExpGem(deathPos, xpReward);
 
 			enemy.CanCollide = false;
 			TweenService.Create(enemy, new TweenInfo(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -170,7 +189,6 @@ collectGemEvent.OnServerEvent.Connect((player, gemArg) => {
 					levelStat.Value += 1;
 					print(`[r-survivors] ¡${player.Name} alcanzó el Nivel ${levelStat.Value}! Pausando juego...`);
 
-					// PAUSAR JUEGO
 					isGamePaused = true;
 					for (const enemy of enemiesFolder.GetChildren()) {
 						if (enemy.IsA("BasePart")) {
@@ -202,7 +220,6 @@ Players.PlayerAdded.Connect((plr) => {
 	exp.Value = 0;
 	exp.Parent = leaderstats;
 
-	// Carpeta para inventario y niveles de armas
 	const inventory = new Instance("Folder");
 	inventory.Name = "Inventory";
 	inventory.Parent = plr;
@@ -228,7 +245,7 @@ Players.PlayerAdded.Connect((plr) => {
 	moveSpeedBonus.Parent = inventory;
 });
 
-// 8. Manejo de elección de mejoras y REANUDACIÓN del juego
+// 8. Manejo de elección de mejoras y REANUDACIÓN
 selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 	const upgradeId = upgradeIdArg as string;
 	const inventory = player.FindFirstChild("Inventory") as Folder;
@@ -261,60 +278,96 @@ selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 		}
 	}
 
-	// REANUDAR JUEGO
 	isGamePaused = false;
 	print("[r-survivors] Juego reanudado.");
 });
 
-// 9. Spawner continuo de enemigos (respeta la pausa)
+// 9. Función para crear cualquier enemigo de ENEMY_TYPES
+function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
+	const enemy = new Instance("Part");
+	enemy.Name = `${config.name}_${index}`;
+	enemy.Size = config.size;
+	enemy.Color = config.color;
+	enemy.Material = config.material;
+	enemy.Anchored = false;
+	enemy.CanCollide = true;
+
+	const angle = math.random() * math.pi * 2;
+	const dist = 42 + math.random() * 22;
+	enemy.Position = new Vector3(math.cos(angle) * dist, config.size.Y / 2 + 1, math.sin(angle) * dist);
+
+	enemy.SetAttribute("HP", config.hp);
+	enemy.SetAttribute("MaxHP", config.hp);
+	enemy.SetAttribute("Speed", config.speed);
+	enemy.SetAttribute("Damage", config.damage);
+	enemy.SetAttribute("XpReward", config.xpValue);
+	enemy.SetAttribute("Behavior", config.behavior);
+	enemy.SetAttribute("InKnockback", false);
+	enemy.SetAttribute("LastShotTime", 0);
+	enemy.Parent = enemiesFolder;
+
+	const bodyVelocity = new Instance("BodyVelocity");
+	bodyVelocity.MaxForce = new Vector3(6000, 0, 6000);
+	bodyVelocity.Velocity = new Vector3(0, 0, 0);
+	bodyVelocity.Parent = enemy;
+
+	let lastPlayerDamageTime = 0;
+	enemy.Touched.Connect((hitPart) => {
+		if (isGamePaused) return;
+
+		const char = hitPart.Parent;
+		const hum = char?.FindFirstChildOfClass("Humanoid");
+		if (hum && hum.Health > 0) {
+			const now = os.clock();
+			if (now - lastPlayerDamageTime >= 0.8) {
+				lastPlayerDamageTime = now;
+				hum.TakeDamage(config.damage);
+			}
+		}
+	});
+
+	return enemy;
+}
+
+// 10. Spawner inteligente con escalado de oleadas
 task.spawn(() => {
-	let enemyCount = 0;
+	let enemyIndex = 0;
 	while (true) {
-		task.wait(1.8);
+		task.wait(1.5);
 		if (isGamePaused) continue;
 
-		if (enemiesFolder.GetChildren().size() < 30) {
-			enemyCount++;
-			const dummy = new Instance("Part");
-			dummy.Name = `Crawler_${enemyCount}`;
-			dummy.Size = new Vector3(3, 3, 3);
-			dummy.Color = new Color3(0.95, 0.25, 0.2);
-			dummy.Material = Enum.Material.Neon;
-			dummy.Anchored = false;
-			dummy.CanCollide = true;
+		gameElapsedTime += 1.5;
 
-			const angle = math.random() * math.pi * 2;
-			const dist = 40 + math.random() * 20;
-			dummy.Position = new Vector3(math.cos(angle) * dist, 3, math.sin(angle) * dist);
-			dummy.SetAttribute("HP", 40);
-			dummy.SetAttribute("MaxHP", 40);
-			dummy.SetAttribute("InKnockback", false);
-			dummy.Parent = enemiesFolder;
+		const currentCount = enemiesFolder.GetChildren().size();
+		const maxCapacity = math.min(50, 20 + math.floor(gameElapsedTime / 20) * 5);
 
-			const bodyVelocity = new Instance("BodyVelocity");
-			bodyVelocity.MaxForce = new Vector3(5000, 0, 5000);
-			bodyVelocity.Velocity = new Vector3(0, 0, 0);
-			bodyVelocity.Parent = dummy;
+		if (currentCount < maxCapacity) {
+			enemyIndex++;
 
-			let lastPlayerDamageTime = 0;
-			dummy.Touched.Connect((hitPart) => {
-				if (isGamePaused) return;
+			// Selección probabilística según tiempo de supervivencia
+			let chosenConfig = ENEMY_TYPES.crawler;
+			const roll = math.random();
 
-				const char = hitPart.Parent;
-				const hum = char?.FindFirstChildOfClass("Humanoid");
-				if (hum && hum.Health > 0) {
-					const now = os.clock();
-					if (now - lastPlayerDamageTime >= 0.8) {
-						lastPlayerDamageTime = now;
-						hum.TakeDamage(10);
-					}
-				}
-			});
+			if (gameElapsedTime > 60 && roll < 0.15) {
+				// Bruto Goliat (Tanque grande tras 1 minuto)
+				chosenConfig = ENEMY_TYPES.brute;
+			} else if (gameElapsedTime > 35 && roll < 0.35) {
+				// Centinela Tirador
+				chosenConfig = ENEMY_TYPES.turret;
+			} else if (gameElapsedTime > 15 && roll < 0.6) {
+				// Deslizador rápido
+				chosenConfig = ENEMY_TYPES.skimmer;
+			} else {
+				// Crawler básico
+				chosenConfig = ENEMY_TYPES.crawler;
+			}
+
+			createEnemyInstance(chosenConfig, enemyIndex);
 		}
 	}
 });
 
-// 10. IA Activa de los enemigos: persecución al jugador (respeta la pausa)
+// 11. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter)
 RunService.Heartbeat.Connect(() => {
 	if (isGamePaused) {
 		for (const enemy of enemiesFolder.GetChildren()) {
@@ -327,14 +380,20 @@ RunService.Heartbeat.Connect(() => {
 	}
 
 	const allPlayers = Players.GetPlayers();
+	const currentTime = os.clock();
 
 	for (const enemy of enemiesFolder.GetChildren()) {
 		if (enemy.IsA("BasePart") && enemy.GetAttribute("InKnockback") !== true) {
 			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
 			if (!bodyVel) continue;
 
+			const behavior = enemy.GetAttribute("Behavior") as string;
+			const baseSpeed = (enemy.GetAttribute("Speed") as number) ?? 8.0;
+
+			// Encontrar jugador más cercano
 			let closestDist = 99999;
 			let targetPos: Vector3 | undefined = undefined;
+			let targetPlayer: Player | undefined = undefined;
 
 			for (const p of allPlayers) {
 				const char = p.Character;
@@ -345,6 +404,7 @@ RunService.Heartbeat.Connect(() => {
 					if (dist < closestDist) {
 						closestDist = dist;
 						targetPos = hrp.Position;
+						targetPlayer = p;
 					}
 				}
 			}
@@ -352,12 +412,77 @@ RunService.Heartbeat.Connect(() => {
 			if (targetPos) {
 				const dir = targetPos.sub(enemy.Position);
 				const dirHorizontal = new Vector3(dir.X, 0, dir.Z).Unit;
-				const enemySpeed = 8.5;
-				bodyVel.Velocity = dirHorizontal.mul(enemySpeed);
+
+				// Comportamiento Shooter (Centinela)
+				if (behavior === "shooter") {
+					// Mantiene distancia óptima de disparo (20 a 28 studs)
+					if (closestDist < 18) {
+						// Retroceder si el jugador se acerca demasiado
+						bodyVel.Velocity = dirHorizontal.mul(-baseSpeed * 0.8);
+					} else if (closestDist > 28) {
+						// Acercarse si está lejos
+						bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
+					} else {
+						// Orbitar lateralmente
+						const perpDir = new Vector3(-dirHorizontal.Z, 0, dirHorizontal.X);
+						bodyVel.Velocity = perpDir.mul(baseSpeed * 0.6);
+					}
+
+					// Disparar proyectil al jugador
+					const lastShot = (enemy.GetAttribute("LastShotTime") as number) ?? 0;
+					if (currentTime - lastShot >= 3.0) {
+						enemy.SetAttribute("LastShotTime", currentTime);
+						fireEnemyProjectile(enemy.Position, targetPos, 14);
+					}
+				} else {
+					// Persecución directa (Melee, Fast, Tank)
+					bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
+				}
 			} else {
+				// Sin objetivos vivos: ir al centro
 				const dirToCenter = new Vector3(0, 0, 0).sub(enemy.Position).Unit;
 				bodyVel.Velocity = new Vector3(dirToCenter.X * 5, 0, dirToCenter.Z * 5);
 			}
 		}
 	}
 });
+
+// 12. Proyectiles hostiles de los Centinelas (Turret)
+function fireEnemyProjectile(startPos: Vector3, targetPos: Vector3, damage: number) {
+	const proj = new Instance("Part");
+	proj.Name = "TurretOrb";
+	proj.Shape = Enum.PartType.Ball;
+	proj.Size = new Vector3(1.3, 1.3, 1.3);
+	proj.Color = new Color3(0.05, 0.85, 1.0); // Cian eléctrico brillante
+	proj.Material = Enum.Material.Neon;
+	proj.CanCollide = false;
+	proj.Anchored = false;
+	proj.Position = startPos.add(new Vector3(0, 1.5, 0));
+	proj.Parent = enemyProjectilesFolder;
+
+	const light = new Instance("PointLight");
+	light.Color = proj.Color;
+	light.Range = 6;
+	light.Brightness = 1.5;
+	light.Parent = proj;
+
+	const dir = targetPos.sub(proj.Position).Unit;
+	const bodyVel = new Instance("BodyVelocity");
+	bodyVel.MaxForce = new Vector3(8000, 8000, 8000);
+	bodyVel.Velocity = dir.mul(26); // Velocidad del proyectil enemigo
+	bodyVel.Parent = proj;
+
+	let hit = false;
+	proj.Touched.Connect((hitPart) => {
+		if (hit) return;
+		const char = hitPart.Parent;
+		const hum = char?.FindFirstChildOfClass("Humanoid");
+		if (hum && hum.Health > 0) {
+			hit = true;
+			hum.TakeDamage(damage);
+			proj.Destroy();
+		}
+	});
+
+	Debris.AddItem(proj, 4);
+}

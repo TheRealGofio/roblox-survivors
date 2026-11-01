@@ -6,9 +6,11 @@ local Players = _services.Players
 local RunService = _services.RunService
 local TweenService = _services.TweenService
 local Workspace = _services.Workspace
+local ENEMY_TYPES = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "enemies").ENEMY_TYPES
 print("[r-survivors] Servidor inicializado con éxito.")
--- Estado global de juego (pausa por level up)
+-- Estado global de juego y tiempo de partida
 local isGamePaused = false
+local gameElapsedTime = 0
 -- 1. Crear el suelo de la arena física (Baseplate) si no existe
 local baseplate = Workspace:FindFirstChild("Baseplate")
 if not baseplate then
@@ -39,6 +41,12 @@ if not enemiesFolder then
 	enemiesFolder.Name = "Enemies"
 	enemiesFolder.Parent = Workspace
 end
+local enemyProjectilesFolder = Workspace:FindFirstChild("EnemyProjectiles")
+if not enemyProjectilesFolder then
+	enemyProjectilesFolder = Instance.new("Folder")
+	enemyProjectilesFolder.Name = "EnemyProjectiles"
+	enemyProjectilesFolder.Parent = Workspace
+end
 local dropsFolder = Workspace:FindFirstChild("Drops")
 if not dropsFolder then
 	dropsFolder = Instance.new("Folder")
@@ -51,7 +59,7 @@ if not networkFolder then
 	networkFolder.Name = "Network"
 	networkFolder.Parent = Workspace
 end
--- 3. RemoteEvents para Daño, Drops y Level Up
+-- 3. RemoteEvents para Red
 local damageEnemyEvent = networkFolder:FindFirstChild("DamageEnemy")
 if not damageEnemyEvent then
 	damageEnemyEvent = Instance.new("RemoteEvent")
@@ -86,7 +94,13 @@ local function spawnExpGem(position, expValue)
 	gem.Shape = Enum.PartType.Ball
 	gem.Size = Vector3.new(1.2, 1.2, 1.2)
 	gem.Material = Enum.Material.Neon
-	gem.Color = Color3.new(0.2, 0.9, 0.35)
+	-- Gemas grandes para los tanques
+	if expValue >= 30 then
+		gem.Size = Vector3.new(1.8, 1.8, 1.8)
+		gem.Color = Color3.new(0.95, 0.85, 0.1)
+	else
+		gem.Color = Color3.new(0.2, 0.9, 0.35)
+	end
 	gem.CanCollide = false
 	gem.Anchored = true
 	local _position = position
@@ -121,12 +135,15 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		enemy:SetAttribute("HP", newHp)
 		if knockbackDir then
 			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+			local isTank = enemy:GetAttribute("Behavior") == "tank"
+			-- Los brutos gigantes tienen gran resistencia al knockback
+			local knockbackForce = if isTank then 5 else 18
 			if bodyVel then
-				local _exp = knockbackDir * 18
-				local _vector3 = Vector3.new(0, 4, 0)
+				local _exp = knockbackDir * knockbackForce
+				local _vector3 = Vector3.new(0, if isTank then 1 else 4, 0)
 				bodyVel.Velocity = _exp + _vector3
 				enemy:SetAttribute("InKnockback", true)
-				task.delay(0.25, function()
+				task.delay(0.22, function()
 					if enemy and enemy.Parent then
 						enemy:SetAttribute("InKnockback", false)
 					end
@@ -135,7 +152,12 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		end
 		if newHp <= 0 then
 			local deathPos = enemy.Position
-			spawnExpGem(deathPos, 15)
+			local _condition_1 = (enemy:GetAttribute("XpReward"))
+			if _condition_1 == nil then
+				_condition_1 = 15
+			end
+			local xpReward = _condition_1
+			spawnExpGem(deathPos, xpReward)
 			enemy.CanCollide = false
 			TweenService:Create(enemy, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Size = Vector3.new(0.1, 0.1, 0.1),
@@ -171,7 +193,6 @@ collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
 					expStat.Value -= nextLevelReq
 					levelStat.Value += 1
 					print(`[r-survivors] ¡{player.Name} alcanzó el Nivel {levelStat.Value}! Pausando juego...`)
-					-- PAUSAR JUEGO
 					isGamePaused = true
 					for _, enemy in enemiesFolder:GetChildren() do
 						if enemy:IsA("BasePart") then
@@ -200,7 +221,6 @@ Players.PlayerAdded:Connect(function(plr)
 	exp.Name = "EXP"
 	exp.Value = 0
 	exp.Parent = leaderstats
-	-- Carpeta para inventario y niveles de armas
 	local inventory = Instance.new("Folder")
 	inventory.Name = "Inventory"
 	inventory.Parent = plr
@@ -221,7 +241,7 @@ Players.PlayerAdded:Connect(function(plr)
 	moveSpeedBonus.Value = 0
 	moveSpeedBonus.Parent = inventory
 end)
--- 8. Manejo de elección de mejoras y REANUDACIÓN del juego
+-- 8. Manejo de elección de mejoras y REANUDACIÓN
 selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 	local upgradeId = upgradeIdArg
 	local inventory = player:FindFirstChild("Inventory")
@@ -263,61 +283,90 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 			end
 		end
 	end
-	-- REANUDAR JUEGO
 	isGamePaused = false
 	print("[r-survivors] Juego reanudado.")
 end)
--- 9. Spawner continuo de enemigos (respeta la pausa)
+-- 9. Función para crear cualquier enemigo de ENEMY_TYPES
+local function createEnemyInstance(config, index)
+	local enemy = Instance.new("Part")
+	enemy.Name = `{config.name}_{index}`
+	enemy.Size = config.size
+	enemy.Color = config.color
+	enemy.Material = config.material
+	enemy.Anchored = false
+	enemy.CanCollide = true
+	local angle = math.random() * math.pi * 2
+	local dist = 42 + math.random() * 22
+	enemy.Position = Vector3.new(math.cos(angle) * dist, config.size.Y / 2 + 1, math.sin(angle) * dist)
+	enemy:SetAttribute("HP", config.hp)
+	enemy:SetAttribute("MaxHP", config.hp)
+	enemy:SetAttribute("Speed", config.speed)
+	enemy:SetAttribute("Damage", config.damage)
+	enemy:SetAttribute("XpReward", config.xpValue)
+	enemy:SetAttribute("Behavior", config.behavior)
+	enemy:SetAttribute("InKnockback", false)
+	enemy:SetAttribute("LastShotTime", 0)
+	enemy.Parent = enemiesFolder
+	local bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(6000, 0, 6000)
+	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
+	bodyVelocity.Parent = enemy
+	local lastPlayerDamageTime = 0
+	enemy.Touched:Connect(function(hitPart)
+		if isGamePaused then
+			return nil
+		end
+		local char = hitPart.Parent
+		local _hum = char
+		if _hum ~= nil then
+			_hum = _hum:FindFirstChildOfClass("Humanoid")
+		end
+		local hum = _hum
+		if hum and hum.Health > 0 then
+			local now = os.clock()
+			if now - lastPlayerDamageTime >= 0.8 then
+				lastPlayerDamageTime = now
+				hum:TakeDamage(config.damage)
+			end
+		end
+	end)
+	return enemy
+end
+-- 10. Spawner inteligente con escalado de oleadas
 task.spawn(function()
-	local enemyCount = 0
+	local enemyIndex = 0
 	while true do
-		task.wait(1.8)
+		task.wait(1.5)
 		if isGamePaused then
 			continue
 		end
-		if #enemiesFolder:GetChildren() < 30 then
-			enemyCount += 1
-			local dummy = Instance.new("Part")
-			dummy.Name = `Crawler_{enemyCount}`
-			dummy.Size = Vector3.new(3, 3, 3)
-			dummy.Color = Color3.new(0.95, 0.25, 0.2)
-			dummy.Material = Enum.Material.Neon
-			dummy.Anchored = false
-			dummy.CanCollide = true
-			local angle = math.random() * math.pi * 2
-			local dist = 40 + math.random() * 20
-			dummy.Position = Vector3.new(math.cos(angle) * dist, 3, math.sin(angle) * dist)
-			dummy:SetAttribute("HP", 40)
-			dummy:SetAttribute("MaxHP", 40)
-			dummy:SetAttribute("InKnockback", false)
-			dummy.Parent = enemiesFolder
-			local bodyVelocity = Instance.new("BodyVelocity")
-			bodyVelocity.MaxForce = Vector3.new(5000, 0, 5000)
-			bodyVelocity.Velocity = Vector3.new(0, 0, 0)
-			bodyVelocity.Parent = dummy
-			local lastPlayerDamageTime = 0
-			dummy.Touched:Connect(function(hitPart)
-				if isGamePaused then
-					return nil
-				end
-				local char = hitPart.Parent
-				local _hum = char
-				if _hum ~= nil then
-					_hum = _hum:FindFirstChildOfClass("Humanoid")
-				end
-				local hum = _hum
-				if hum and hum.Health > 0 then
-					local now = os.clock()
-					if now - lastPlayerDamageTime >= 0.8 then
-						lastPlayerDamageTime = now
-						hum:TakeDamage(10)
-					end
-				end
-			end)
+		gameElapsedTime += 1.5
+		local currentCount = #enemiesFolder:GetChildren()
+		local maxCapacity = math.min(50, 20 + math.floor(gameElapsedTime / 20) * 5)
+		if currentCount < maxCapacity then
+			enemyIndex += 1
+			-- Selección probabilística según tiempo de supervivencia
+			local chosenConfig = ENEMY_TYPES.crawler
+			local roll = math.random()
+			if gameElapsedTime > 60 and roll < 0.15 then
+				-- Bruto Goliat (Tanque grande tras 1 minuto)
+				chosenConfig = ENEMY_TYPES.brute
+			elseif gameElapsedTime > 35 and roll < 0.35 then
+				-- Centinela Tirador
+				chosenConfig = ENEMY_TYPES.turret
+			elseif gameElapsedTime > 15 and roll < 0.6 then
+				-- Deslizador rápido
+				chosenConfig = ENEMY_TYPES.skimmer
+			else
+				-- Crawler básico
+				chosenConfig = ENEMY_TYPES.crawler
+			end
+			createEnemyInstance(chosenConfig, enemyIndex)
 		end
 	end
 end)
--- 10. IA Activa de los enemigos: persecución al jugador (respeta la pausa)
+-- 11. IA de comportamiento por arquetipo (Melee, Fast, Tank, Shooter)
+local fireEnemyProjectile
 RunService.Heartbeat:Connect(function()
 	if isGamePaused then
 		for _, enemy in enemiesFolder:GetChildren() do
@@ -331,14 +380,23 @@ RunService.Heartbeat:Connect(function()
 		return nil
 	end
 	local allPlayers = Players:GetPlayers()
+	local currentTime = os.clock()
 	for _, enemy in enemiesFolder:GetChildren() do
 		if enemy:IsA("BasePart") and enemy:GetAttribute("InKnockback") ~= true then
 			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
 			if not bodyVel then
 				continue
 			end
+			local behavior = enemy:GetAttribute("Behavior")
+			local _condition = (enemy:GetAttribute("Speed"))
+			if _condition == nil then
+				_condition = 8.0
+			end
+			local baseSpeed = _condition
+			-- Encontrar jugador más cercano
 			local closestDist = 99999
 			local targetPos = nil
+			local targetPlayer = nil
 			for _1, p in allPlayers do
 				local char = p.Character
 				local _result = char
@@ -358,6 +416,7 @@ RunService.Heartbeat:Connect(function()
 					if dist < closestDist then
 						closestDist = dist
 						targetPos = hrp.Position
+						targetPlayer = p
 					end
 				end
 			end
@@ -366,9 +425,38 @@ RunService.Heartbeat:Connect(function()
 				local _position = enemy.Position
 				local dir = _targetPos - _position
 				local dirHorizontal = Vector3.new(dir.X, 0, dir.Z).Unit
-				local enemySpeed = 8.5
-				bodyVel.Velocity = dirHorizontal * enemySpeed
+				-- Comportamiento Shooter (Centinela)
+				if behavior == "shooter" then
+					-- Mantiene distancia óptima de disparo (20 a 28 studs)
+					if closestDist < 18 then
+						-- Retroceder si el jugador se acerca demasiado
+						local _arg0 = -baseSpeed * 0.8
+						bodyVel.Velocity = dirHorizontal * _arg0
+					elseif closestDist > 28 then
+						-- Acercarse si está lejos
+						bodyVel.Velocity = dirHorizontal * baseSpeed
+					else
+						-- Orbitar lateralmente
+						local perpDir = Vector3.new(-dirHorizontal.Z, 0, dirHorizontal.X)
+						local _arg0 = baseSpeed * 0.6
+						bodyVel.Velocity = perpDir * _arg0
+					end
+					-- Disparar proyectil al jugador
+					local _condition_1 = (enemy:GetAttribute("LastShotTime"))
+					if _condition_1 == nil then
+						_condition_1 = 0
+					end
+					local lastShot = _condition_1
+					if currentTime - lastShot >= 3.0 then
+						enemy:SetAttribute("LastShotTime", currentTime)
+						fireEnemyProjectile(enemy.Position, targetPos, 14)
+					end
+				else
+					-- Persecución directa (Melee, Fast, Tank)
+					bodyVel.Velocity = dirHorizontal * baseSpeed
+				end
 			else
+				-- Sin objetivos vivos: ir al centro
 				local _vector3 = Vector3.new(0, 0, 0)
 				local _position = enemy.Position
 				local dirToCenter = (_vector3 - _position).Unit
@@ -377,3 +465,48 @@ RunService.Heartbeat:Connect(function()
 		end
 	end
 end)
+-- 12. Proyectiles hostiles de los Centinelas (Turret)
+function fireEnemyProjectile(startPos, targetPos, damage)
+	local proj = Instance.new("Part")
+	proj.Name = "TurretOrb"
+	proj.Shape = Enum.PartType.Ball
+	proj.Size = Vector3.new(1.3, 1.3, 1.3)
+	proj.Color = Color3.new(0.05, 0.85, 1.0)
+	proj.Material = Enum.Material.Neon
+	proj.CanCollide = false
+	proj.Anchored = false
+	local _startPos = startPos
+	local _vector3 = Vector3.new(0, 1.5, 0)
+	proj.Position = _startPos + _vector3
+	proj.Parent = enemyProjectilesFolder
+	local light = Instance.new("PointLight")
+	light.Color = proj.Color
+	light.Range = 6
+	light.Brightness = 1.5
+	light.Parent = proj
+	local _targetPos = targetPos
+	local _position = proj.Position
+	local dir = (_targetPos - _position).Unit
+	local bodyVel = Instance.new("BodyVelocity")
+	bodyVel.MaxForce = Vector3.new(8000, 8000, 8000)
+	bodyVel.Velocity = dir * 26
+	bodyVel.Parent = proj
+	local hit = false
+	proj.Touched:Connect(function(hitPart)
+		if hit then
+			return nil
+		end
+		local char = hitPart.Parent
+		local _hum = char
+		if _hum ~= nil then
+			_hum = _hum:FindFirstChildOfClass("Humanoid")
+		end
+		local hum = _hum
+		if hum and hum.Health > 0 then
+			hit = true
+			hum:TakeDamage(damage)
+			proj:Destroy()
+		end
+	end)
+	Debris:AddItem(proj, 4)
+end
