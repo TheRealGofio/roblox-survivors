@@ -943,75 +943,73 @@ RunService.Heartbeat:Connect(function()
 				bodyVel.Velocity = Vector3.new(dirToCenter.X * 5, 0, dirToCenter.Z * 5)
 				enemy.CFrame = CFrame.new(enemy.Position, enemy.Position + dirToCenter)
 			end
-			-- 12.1 Animaciones procedurales dinámicas para los modelos 3D según su arquetipo
+			-- 12.1 Animaciones procedurales dinámicas y esqueléticas (Bones / Rigging)
 			local visualModel = enemy:FindFirstChild("VisualModel")
 			if visualModel then
-				local animTime = currentTime * 6.0
+				local animTime = currentTime * 7.0
 				if behavior == "melee" then
-					-- Crawler (GreenSpikyBlob): Marcha elástica con rebote squash & stretch de púas
-					local spikesMotor = visualModel:FindFirstChild("spikes_geom_Motor", true)
-					if spikesMotor then
-						local _exp = CFrame.Angles(0, math.sin(animTime) * 0.15, 0)
-						local _cFrame = CFrame.new(0, math.sin(animTime * 2) * 0.25, 0)
-						spikesMotor.Transform = _exp * _cFrame
+					-- GreenSpikyBlob: Deformación esquelética de la cabeza/púas y bamboleo
+					local headBone = visualModel:FindFirstChild("Head", true)
+					if headBone then
+						local _exp = CFrame.Angles(math.sin(animTime) * 0.18, 0, math.cos(animTime) * 0.12)
+						local _cFrame = CFrame.new(0, math.sin(animTime * 2) * 0.3, 0)
+						headBone.Transform = _exp * _cFrame
 					end
-					local eyesMotor = visualModel:FindFirstChild("eyes_geom_Motor", true)
-					if eyesMotor then
-						eyesMotor.Transform = CFrame.new(0, math.sin(animTime * 2) * 0.1, 0)
+					local head2Bone = visualModel:FindFirstChild("Head2", true)
+					if head2Bone then
+						head2Bone.Transform = CFrame.Angles(math.sin(animTime * 1.5) * 0.15, 0, 0)
 					end
 				elseif behavior == "tank" then
-					-- Brute (Demon): Marcha pesada con oscilación imponente de hombreras y cuernos
-					local shoulderMotor = visualModel:FindFirstChild("shoulders_geom_Motor", true)
-					if shoulderMotor then
-						shoulderMotor.Transform = CFrame.Angles(math.sin(animTime * 0.8) * 0.12, 0, math.cos(animTime * 0.8) * 0.08)
+					-- Demon: Ciclo de carrera de piernas y balanceo de torso
+					local leftLeg = visualModel:FindFirstChild("UpperLeg.L", true)
+					local rightLeg = visualModel:FindFirstChild("UpperLeg.R", true)
+					if leftLeg and rightLeg then
+						local stride = math.sin(animTime * 0.8) * 0.45
+						leftLeg.Transform = CFrame.Angles(stride, 0, 0)
+						rightLeg.Transform = CFrame.Angles(-stride, 0, 0)
 					end
-					local hornsMotor = visualModel:FindFirstChild("horns_geom_Motor", true)
-					if hornsMotor then
-						hornsMotor.Transform = CFrame.Angles(math.sin(animTime * 0.8) * 0.1, 0, 0)
+					local torso = visualModel:FindFirstChild("Torso", true)
+					if torso then
+						local _exp = CFrame.Angles(0, math.sin(animTime * 0.8) * 0.12, 0)
+						local _cFrame = CFrame.new(0, math.abs(math.sin(animTime * 0.8)) * 0.2, 0)
+						torso.Transform = _exp * _cFrame
+					end
+					local leftArm = visualModel:FindFirstChild("UpperArm.L", true)
+					local rightArm = visualModel:FindFirstChild("UpperArm.R", true)
+					if leftArm and rightArm then
+						local armSwing = math.sin(animTime * 0.8) * 0.35
+						leftArm.Transform = CFrame.Angles(-armSwing, 0, 0)
+						rightArm.Transform = CFrame.Angles(armSwing, 0, 0)
 					end
 				elseif behavior == "fast" then
-					-- Skimmer (Viper): Aleteo supersónico de extremidades y ondulación de cabeza
-					local leftArm = visualModel:FindFirstChild("left arm_geom_Motor", true)
-					local rightArm = visualModel:FindFirstChild("right arm_geom_Motor", true)
-					if leftArm and rightArm then
-						local flap = math.sin(animTime * 2.2) * 0.35
-						leftArm.Transform = CFrame.Angles(0, 0, flap)
-						rightArm.Transform = CFrame.Angles(0, 0, -flap)
-					end
-					local head = visualModel:FindFirstChild("head_geom_Motor", true)
-					if head then
-						head.Transform = CFrame.Angles(0, math.sin(animTime * 1.5) * 0.2, 0)
+					-- Birb: Vuelo rasante con balanceo y aleteo rítmico
+					local rootPart = visualModel.PrimaryPart
+					if rootPart then
+						local _cFrame = enemy.CFrame
+						local _exp = CFrame.Angles(math.sin(animTime * 1.2) * 0.1, 0, math.sin(animTime * 2.5) * 0.2)
+						local _vector3 = Vector3.new(0, math.sin(animTime * 2.0) * 0.4, 0)
+						visualModel:PivotTo(_cFrame * (_exp + _vector3))
 					end
 				elseif behavior == "shooter" then
-					-- Turret (Drone): Rotación continua de propulsores / turbinas giroscópicas
-					local propL1 = visualModel:FindFirstChild("left front propeller_geom_Motor", true)
-					local propR1 = visualModel:FindFirstChild("right front propeller_geom_Motor", true)
-					local propL2 = visualModel:FindFirstChild("left rear propeller_geom_Motor", true)
-					local propR2 = visualModel:FindFirstChild("right rear propeller_geom_Motor", true)
-					local rotAngle = animTime * 3.5
-					if propL1 then
-						propL1.Transform = CFrame.Angles(0, rotAngle, 0)
+					-- Wizard: Levitación mística con báculo / rotación de orbe
+					local torso = visualModel:FindFirstChild("Torso", true)
+					if torso then
+						local _exp = CFrame.Angles(0, math.sin(animTime * 0.5) * 0.15, 0)
+						local _cFrame = CFrame.new(0, math.sin(animTime * 0.7) * 0.35, 0)
+						torso.Transform = _exp * _cFrame
 					end
-					if propR1 then
-						propR1.Transform = CFrame.Angles(0, -rotAngle, 0)
-					end
-					if propL2 then
-						propL2.Transform = CFrame.Angles(0, rotAngle, 0)
-					end
-					if propR2 then
-						propR2.Transform = CFrame.Angles(0, -rotAngle, 0)
+					local armR = visualModel:FindFirstChild("UpperArm.R", true)
+					if armR then
+						armR.Transform = CFrame.Angles(0.6 + math.sin(animTime) * 0.2, 0, 0)
 					end
 				elseif behavior == "boss" then
-					-- Void Overlord: Latido cósmico amenazante de la armadura y cuernos
-					local armor = visualModel:FindFirstChild("armor_geom_Motor", true)
-					if armor then
-						local _cFrame = CFrame.new(0, math.sin(animTime * 0.5) * 0.4, 0)
-						local _arg0 = CFrame.Angles(0, math.sin(animTime * 0.3) * 0.08, 0)
-						armor.Transform = _cFrame * _arg0
-					end
-					local horns = visualModel:FindFirstChild("horns_geom_Motor", true)
-					if horns then
-						horns.Transform = CFrame.Angles(math.sin(animTime * 0.5) * 0.15, 0, 0)
+					-- Alpaking: Trote regio y cabeceo imponente de emperador
+					local rootPart = visualModel.PrimaryPart
+					if rootPart then
+						local _cFrame = enemy.CFrame
+						local _exp = CFrame.Angles(0, 0, math.sin(animTime * 0.9) * 0.08)
+						local _vector3 = Vector3.new(0, math.abs(math.sin(animTime * 1.2)) * 0.4, 0)
+						visualModel:PivotTo(_cFrame * (_exp + _vector3))
 					end
 				end
 			end

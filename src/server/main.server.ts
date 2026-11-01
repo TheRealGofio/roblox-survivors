@@ -845,72 +845,84 @@ RunService.Heartbeat.Connect(() => {
 				enemy.CFrame = new CFrame(enemy.Position, enemy.Position.add(dirToCenter));
 			}
 
-			// 12.1 Animaciones procedurales dinámicas para los modelos 3D según su arquetipo
+			// 12.1 Animaciones procedurales dinámicas y esqueléticas (Bones / Rigging)
 			const visualModel = enemy.FindFirstChild("VisualModel") as Model;
 			if (visualModel) {
-				const animTime = currentTime * 6.0;
+				const animTime = currentTime * 7.0;
 
 				if (behavior === "melee") {
-					// Crawler (GreenSpikyBlob): Marcha elástica con rebote squash & stretch de púas
-					const spikesMotor = visualModel.FindFirstChild("spikes_geom_Motor", true) as Motor6D;
-					if (spikesMotor) {
-						spikesMotor.Transform = CFrame.Angles(0, math.sin(animTime) * 0.15, 0).mul(
-							new CFrame(0, math.sin(animTime * 2) * 0.25, 0),
-						);
+					// GreenSpikyBlob: Deformación esquelética de la cabeza/púas y bamboleo
+					const headBone = visualModel.FindFirstChild("Head", true) as Bone;
+					if (headBone) {
+						headBone.Transform = CFrame.Angles(
+							math.sin(animTime) * 0.18,
+							0,
+							math.cos(animTime) * 0.12,
+						).mul(new CFrame(0, math.sin(animTime * 2) * 0.3, 0));
 					}
-					const eyesMotor = visualModel.FindFirstChild("eyes_geom_Motor", true) as Motor6D;
-					if (eyesMotor) {
-						eyesMotor.Transform = new CFrame(0, math.sin(animTime * 2) * 0.1, 0);
+					const head2Bone = visualModel.FindFirstChild("Head2", true) as Bone;
+					if (head2Bone) {
+						head2Bone.Transform = CFrame.Angles(math.sin(animTime * 1.5) * 0.15, 0, 0);
 					}
 				} else if (behavior === "tank") {
-					// Brute (Demon): Marcha pesada con oscilación imponente de hombreras y cuernos
-					const shoulderMotor = visualModel.FindFirstChild("shoulders_geom_Motor", true) as Motor6D;
-					if (shoulderMotor) {
-						shoulderMotor.Transform = CFrame.Angles(
-							math.sin(animTime * 0.8) * 0.12,
-							0,
-							math.cos(animTime * 0.8) * 0.08,
+					// Demon: Ciclo de carrera de piernas y balanceo de torso
+					const leftLeg = visualModel.FindFirstChild("UpperLeg.L", true) as Bone;
+					const rightLeg = visualModel.FindFirstChild("UpperLeg.R", true) as Bone;
+					if (leftLeg && rightLeg) {
+						const stride = math.sin(animTime * 0.8) * 0.45;
+						leftLeg.Transform = CFrame.Angles(stride, 0, 0);
+						rightLeg.Transform = CFrame.Angles(-stride, 0, 0);
+					}
+					const torso = visualModel.FindFirstChild("Torso", true) as Bone;
+					if (torso) {
+						torso.Transform = CFrame.Angles(0, math.sin(animTime * 0.8) * 0.12, 0).mul(
+							new CFrame(0, math.abs(math.sin(animTime * 0.8)) * 0.2, 0),
 						);
 					}
-					const hornsMotor = visualModel.FindFirstChild("horns_geom_Motor", true) as Motor6D;
-					if (hornsMotor) {
-						hornsMotor.Transform = CFrame.Angles(math.sin(animTime * 0.8) * 0.1, 0, 0);
+					const leftArm = visualModel.FindFirstChild("UpperArm.L", true) as Bone;
+					const rightArm = visualModel.FindFirstChild("UpperArm.R", true) as Bone;
+					if (leftArm && rightArm) {
+						const armSwing = math.sin(animTime * 0.8) * 0.35;
+						leftArm.Transform = CFrame.Angles(-armSwing, 0, 0);
+						rightArm.Transform = CFrame.Angles(armSwing, 0, 0);
 					}
 				} else if (behavior === "fast") {
-					// Skimmer (Viper): Aleteo supersónico de extremidades y ondulación de cabeza
-					const leftArm = visualModel.FindFirstChild("left arm_geom_Motor", true) as Motor6D;
-					const rightArm = visualModel.FindFirstChild("right arm_geom_Motor", true) as Motor6D;
-					if (leftArm && rightArm) {
-						const flap = math.sin(animTime * 2.2) * 0.35;
-						leftArm.Transform = CFrame.Angles(0, 0, flap);
-						rightArm.Transform = CFrame.Angles(0, 0, -flap);
-					}
-					const head = visualModel.FindFirstChild("head_geom_Motor", true) as Motor6D;
-					if (head) {
-						head.Transform = CFrame.Angles(0, math.sin(animTime * 1.5) * 0.2, 0);
-					}
-				} else if (behavior === "shooter") {
-					// Turret (Drone): Rotación continua de propulsores / turbinas giroscópicas
-					const propL1 = visualModel.FindFirstChild("left front propeller_geom_Motor", true) as Motor6D;
-					const propR1 = visualModel.FindFirstChild("right front propeller_geom_Motor", true) as Motor6D;
-					const propL2 = visualModel.FindFirstChild("left rear propeller_geom_Motor", true) as Motor6D;
-					const propR2 = visualModel.FindFirstChild("right rear propeller_geom_Motor", true) as Motor6D;
-					const rotAngle = animTime * 3.5;
-					if (propL1) propL1.Transform = CFrame.Angles(0, rotAngle, 0);
-					if (propR1) propR1.Transform = CFrame.Angles(0, -rotAngle, 0);
-					if (propL2) propL2.Transform = CFrame.Angles(0, rotAngle, 0);
-					if (propR2) propR2.Transform = CFrame.Angles(0, -rotAngle, 0);
-				} else if (behavior === "boss") {
-					// Void Overlord: Latido cósmico amenazante de la armadura y cuernos
-					const armor = visualModel.FindFirstChild("armor_geom_Motor", true) as Motor6D;
-					if (armor) {
-						armor.Transform = new CFrame(0, math.sin(animTime * 0.5) * 0.4, 0).mul(
-							CFrame.Angles(0, math.sin(animTime * 0.3) * 0.08, 0),
+					// Birb: Vuelo rasante con balanceo y aleteo rítmico
+					const rootPart = visualModel.PrimaryPart;
+					if (rootPart) {
+						visualModel.PivotTo(
+							enemy.CFrame.mul(
+								CFrame.Angles(
+									math.sin(animTime * 1.2) * 0.1,
+									0,
+									math.sin(animTime * 2.5) * 0.2,
+								).add(new Vector3(0, math.sin(animTime * 2.0) * 0.4, 0)),
+							),
 						);
 					}
-					const horns = visualModel.FindFirstChild("horns_geom_Motor", true) as Motor6D;
-					if (horns) {
-						horns.Transform = CFrame.Angles(math.sin(animTime * 0.5) * 0.15, 0, 0);
+				} else if (behavior === "shooter") {
+					// Wizard: Levitación mística con báculo / rotación de orbe
+					const torso = visualModel.FindFirstChild("Torso", true) as Bone;
+					if (torso) {
+						torso.Transform = CFrame.Angles(0, math.sin(animTime * 0.5) * 0.15, 0).mul(
+							new CFrame(0, math.sin(animTime * 0.7) * 0.35, 0),
+						);
+					}
+					const armR = visualModel.FindFirstChild("UpperArm.R", true) as Bone;
+					if (armR) {
+						armR.Transform = CFrame.Angles(0.6 + math.sin(animTime) * 0.2, 0, 0);
+					}
+				} else if (behavior === "boss") {
+					// Alpaking: Trote regio y cabeceo imponente de emperador
+					const rootPart = visualModel.PrimaryPart;
+					if (rootPart) {
+						visualModel.PivotTo(
+							enemy.CFrame.mul(
+								CFrame.Angles(0, 0, math.sin(animTime * 0.9) * 0.08).add(
+									new Vector3(0, math.abs(math.sin(animTime * 1.2)) * 0.4, 0),
+								),
+							),
+						);
 					}
 				}
 			}
