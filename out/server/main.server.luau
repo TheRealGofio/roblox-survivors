@@ -373,6 +373,10 @@ Players.PlayerAdded:Connect(function(plr)
 	orbitsLvl.Name = "chrono_orbits"
 	orbitsLvl.Value = 0
 	orbitsLvl.Parent = inventory
+	local novaLvl = Instance.new("IntValue")
+	novaLvl.Name = "nova_beam"
+	novaLvl.Value = 0
+	novaLvl.Parent = inventory
 	local maxHpBonus = Instance.new("NumberValue")
 	maxHpBonus.Name = "max_hp_bonus"
 	maxHpBonus.Value = 0
@@ -404,6 +408,12 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 			if val then
 				val.Value += 1
 				print(`[Upgrade] {player.Name} mejoró/desbloqueó Órbitas Crono a Nivel {val.Value}`)
+			end
+		elseif upgradeId == "nova_beam" then
+			local val = inventory:FindFirstChild("nova_beam")
+			if val then
+				val.Value += 1
+				print(`[Upgrade] {player.Name} mejoró/desbloqueó Rayo Nova a Nivel {val.Value}`)
 			end
 		elseif upgradeId == "speed_boost" then
 			local val = inventory:FindFirstChild("speed_bonus")
@@ -517,6 +527,10 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 			if o then
 				o.Value = 3
 			end
+			local n = inventory:FindFirstChild("nova_beam")
+			if n then
+				n.Value = 3
+			end
 			print(`[Debug] {player.Name} ha desbloqueado todas las armas a nivel máximo`)
 		end
 	elseif action == "give_plasma" then
@@ -538,6 +552,16 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 		local o = _result_1
 		if o then
 			o.Value = math.min(3, o.Value + 1)
+		end
+	elseif action == "give_nova" then
+		local inventory = player:FindFirstChild("Inventory")
+		local _result_1 = inventory
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("nova_beam")
+		end
+		local n = _result_1
+		if n then
+			n.Value = math.min(3, n.Value + 1)
 		end
 	elseif action == "give_speed" then
 		local _hum = char

@@ -219,7 +219,7 @@ dbCorner.Parent = debugToggleBtn;
 
 const debugPanel = new Instance("Frame");
 debugPanel.Name = "DebugPanel";
-debugPanel.Size = new UDim2(0, 220, 0, 460);
+debugPanel.Size = new UDim2(0, 220, 0, 500);
 debugPanel.Position = new UDim2(0.98, -220, 0.07, 0);
 debugPanel.BackgroundColor3 = new Color3(0.1, 0.12, 0.16);
 debugPanel.BorderSizePixel = 0;
@@ -248,8 +248,9 @@ dpPadding.Parent = debugPanel;
 const debugButtons = [
 	{ id: "instant_level_up", label: "⭐ Subir de Nivel" },
 	{ id: "unlock_all_weapons", label: "⚡ TODAS LAS ARMAS (MÁX)" },
-	{ id: "give_plasma", label: "🟣 +1 Nivel Bláster" },
-	{ id: "give_orbits", label: "🪐 +1 Nivel Órbitas" },
+	{ id: "give_nova", label: "🔥 +1 Rayo Nova" },
+	{ id: "give_orbits", label: "🪐 +1 Órbitas Crono" },
+	{ id: "give_plasma", label: "🟣 +1 Bláster Plasma" },
 	{ id: "give_speed", label: "👟 +6 Velocidad" },
 	{ id: "spawn_boss", label: "👑 Invocar Boss" },
 	{ id: "spawn_chest", label: "📦 Spawn Cofre" },
@@ -558,6 +559,7 @@ function showLevelUpModal() {
 	const boomerangLvl = (inventory?.FindFirstChild("void_boomerang") as IntValue)?.Value ?? 1;
 	const plasmaLvl = (inventory?.FindFirstChild("plasma_blaster") as IntValue)?.Value ?? 0;
 	const orbitsLvl = (inventory?.FindFirstChild("chrono_orbits") as IntValue)?.Value ?? 0;
+	const novaLvl = (inventory?.FindFirstChild("nova_beam") as IntValue)?.Value ?? 0;
 
 	// Opciones disponibles para elegir
 	const allOptions = [
@@ -571,7 +573,7 @@ function showLevelUpModal() {
 		},
 		{
 			id: "plasma_blaster",
-			title: plasmaLvl === 0 ? "Nueva Arma: Bláster" : "Bláster de Plasma",
+			title: plasmaLvl === 0 ? "Nueva: Bláster" : "Bláster de Plasma",
 			tag: plasmaLvl === 0 ? "DESBLOQUEAR" : `Nivel ${plasmaLvl + 1}`,
 			desc: plasmaLvl === 0 ? "Ráfagas teledirigidas de alta cadencia" : "Dispara 2 esferas de plasma a la vez",
 			color: new Color3(0.45, 0.15, 0.5),
@@ -582,8 +584,16 @@ function showLevelUpModal() {
 			title: orbitsLvl === 0 ? "Nueva: Órbitas Crono" : "Órbitas Crono",
 			tag: orbitsLvl === 0 ? "DESBLOQUEAR" : `Nivel ${orbitsLvl + 1}`,
 			desc: orbitsLvl === 0 ? "Orbes cinéticos que te orbitan triturando la horda" : "+1 orbe orbital y mayor velocidad de giro",
-			color: new Color3(0.85, 0.65, 0.1), // Dorado radiante
+			color: new Color3(0.85, 0.65, 0.1),
 			available: orbitsLvl < 3,
+		},
+		{
+			id: "nova_beam",
+			title: novaLvl === 0 ? "Nueva: Rayo Nova" : "Rayo Nova",
+			tag: novaLvl === 0 ? "DESBLOQUEAR" : `Nivel ${novaLvl + 1}`,
+			desc: novaLvl === 0 ? "Haz láser de alta energía que calcina columnas de enemigos" : "+60% de anchura, alcance y daño brutal",
+			color: new Color3(0.95, 0.35, 0.1), // Naranja ardiente
+			available: novaLvl < 3,
 		},
 		{
 			id: "speed_boost",
@@ -1068,7 +1078,124 @@ RunService.Heartbeat.Connect((dt) => {
 	});
 });
 
-// 10. Loop de recolección/imantación de gemas hacia el jugador
+// 10. Armas: Rayo Nova (Haz de energía desintegrador)
+task.spawn(() => {
+	while (true) {
+		if (isClientPaused || isGameOver) {
+			task.wait(0.2);
+			continue;
+		}
+
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const novaLvl = (inventory?.FindFirstChild("nova_beam") as IntValue)?.Value ?? 0;
+
+		if (novaLvl <= 0) {
+			task.wait(1.0);
+			continue;
+		}
+
+		const novaDef = WEAPONS.nova_beam.levels[math.min(novaLvl, WEAPONS.nova_beam.levels.size()) - 1];
+		task.wait(novaDef.cooldown);
+
+		if (isClientPaused || isGameOver) continue;
+
+		const char = player.Character;
+		const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+		if (!hrp) continue;
+
+		const enemiesFolder = Workspace.FindFirstChild("Enemies") as Folder;
+		if (!enemiesFolder) continue;
+
+		// Buscar enemigo más cercano para apuntar el haz
+		let closestDist = 9999;
+		let targetPos: Vector3 | undefined = undefined;
+
+		for (const enemy of enemiesFolder.GetChildren()) {
+			if (enemy.IsA("BasePart") && (enemy.GetAttribute("HP") as number ?? 0) > 0) {
+				const dist = hrp.Position.sub(enemy.Position).Magnitude;
+				if (dist < closestDist && dist <= novaDef.range) {
+					closestDist = dist;
+					targetPos = enemy.Position;
+				}
+			}
+		}
+
+		if (targetPos) {
+			fireNovaBeam(hrp.Position, targetPos, novaDef.damage, novaDef.range, novaDef.duration ?? 0.5, novaDef.area);
+		}
+	}
+});
+
+function fireNovaBeam(startPos: Vector3, targetPos: Vector3, damage: number, maxRange: number, duration: number, beamScale: number) {
+	const origin = startPos.add(new Vector3(0, 1.2, 0));
+	const dir = targetPos.sub(origin).Unit;
+	const endPos = origin.add(dir.mul(maxRange));
+	const beamLength = maxRange;
+	const centerPos = origin.add(dir.mul(beamLength / 2));
+
+	// Cilindro de haz láser Neón
+	const beamPart = new Instance("Part");
+	beamPart.Name = "NovaBeamVisual";
+	beamPart.Shape = Enum.PartType.Cylinder;
+	beamPart.Size = new Vector3(beamLength, 1.8 * beamScale, 1.8 * beamScale);
+	beamPart.CFrame = new CFrame(centerPos, endPos).mul(CFrame.Angles(0, math.rad(90), 0));
+	beamPart.Material = Enum.Material.Neon;
+	beamPart.Color = new Color3(1.0, 0.35, 0.1); // Naranja solar desintegrador
+	beamPart.CanCollide = false;
+	beamPart.Anchored = true;
+	beamPart.Parent = Workspace;
+
+	const light = new Instance("PointLight");
+	light.Color = beamPart.Color;
+	light.Range = 16;
+	light.Brightness = 3;
+	light.Parent = beamPart;
+
+	// Dañar a todos los enemigos a lo largo de la línea del haz
+	const enemiesFolder = Workspace.FindFirstChild("Enemies") as Folder;
+	if (enemiesFolder) {
+		for (const enemy of enemiesFolder.GetChildren()) {
+			if (enemy.IsA("BasePart") && (enemy.GetAttribute("HP") as number ?? 0) > 0) {
+				// Distancia punto a recta del láser
+				const v = enemy.Position.sub(origin);
+				const projLength = v.Dot(dir);
+				if (projLength >= 0 && projLength <= maxRange) {
+					const closestPointOnLine = origin.add(dir.mul(projLength));
+					const perpDist = enemy.Position.sub(closestPointOnLine).Magnitude;
+					if (perpDist <= 3.5 * beamScale) {
+						if (!damageEvent) {
+							const net = Workspace.FindFirstChild("Network") as Folder;
+							if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
+						}
+						damageEvent?.FireServer(enemy, damage, dir);
+						VisualEffects.showDamagePopup(enemy.Position, damage, true);
+
+						const origColor = enemy.Color;
+						enemy.Color = new Color3(1, 1, 1);
+						task.delay(0.08, () => {
+							if (enemy && enemy.Parent) enemy.Color = origColor;
+						});
+
+						const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
+						if (enemyHp - damage <= 0) {
+							enemiesDefeatedCount++;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Animación de desvanecimiento del rayo
+	TweenService.Create(beamPart, new TweenInfo(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Transparency: 1,
+		Size: new Vector3(beamLength, 0.1, 0.1),
+	}).Play();
+
+	Debris.AddItem(beamPart, duration + 0.05);
+}
+
+// 11. Loop de recolección/imantación de gemas hacia el jugador
 RunService.Heartbeat.Connect((dt) => {
 	if (isClientPaused || isGameOver) return;
 

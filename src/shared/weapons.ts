@@ -7,6 +7,7 @@ export interface WeaponLevelDef {
 	speed: number;
 	area: number;
 	pierce: number;
+	duration?: number;
 	description: string;
 }
 
@@ -109,7 +110,7 @@ export const WEAPONS: Record<string, WeaponDef> = {
 				damage: 16,
 				cooldown: 0.25,
 				projectiles: 2,
-				range: 5.5, // Radio orbital
+				range: 5.5,
 				speed: 3.2,
 				area: 1.0,
 				pierce: 999,
@@ -136,6 +137,50 @@ export const WEAPONS: Record<string, WeaponDef> = {
 				area: 1.4,
 				pierce: 999,
 				description: "Vórtice de 4 orbes fulgurantes con fuerte knockback.",
+			},
+		],
+	},
+	nova_beam: {
+		id: "nova_beam",
+		name: "Rayo Nova",
+		type: "beam",
+		description: "Emite un haz láser masivo y continuo que atraviesa columnas enteras de enemigos.",
+		levels: [
+			{
+				level: 1,
+				damage: 40,
+				cooldown: 2.2,
+				projectiles: 1,
+				range: 50,
+				speed: 0,
+				area: 1.0,
+				pierce: 999,
+				duration: 0.45,
+				description: "1 rayo láser de alta energía que perfora en línea recta.",
+			},
+			{
+				level: 2,
+				damage: 65,
+				cooldown: 1.8,
+				projectiles: 1,
+				range: 65,
+				speed: 0,
+				area: 1.4,
+				pierce: 999,
+				duration: 0.6,
+				description: "Mayor anchura de haz, alcance y +60% daño.",
+			},
+			{
+				level: 3,
+				damage: 90,
+				cooldown: 1.4,
+				projectiles: 2,
+				range: 75,
+				speed: 0,
+				area: 1.8,
+				pierce: 999,
+				duration: 0.75,
+				description: "Dispara 2 rayos Nova paralelos de desintegración masiva.",
 			},
 		],
 	},

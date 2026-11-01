@@ -217,7 +217,7 @@ dbCorner.CornerRadius = UDim.new(0, 6)
 dbCorner.Parent = debugToggleBtn
 local debugPanel = Instance.new("Frame")
 debugPanel.Name = "DebugPanel"
-debugPanel.Size = UDim2.new(0, 220, 0, 460)
+debugPanel.Size = UDim2.new(0, 220, 0, 500)
 debugPanel.Position = UDim2.new(0.98, -220, 0.07, 0)
 debugPanel.BackgroundColor3 = Color3.new(0.1, 0.12, 0.16)
 debugPanel.BorderSizePixel = 0
@@ -245,11 +245,14 @@ local debugButtons = { {
 	id = "unlock_all_weapons",
 	label = "⚡ TODAS LAS ARMAS (MÁX)",
 }, {
-	id = "give_plasma",
-	label = "🟣 +1 Nivel Bláster",
+	id = "give_nova",
+	label = "🔥 +1 Rayo Nova",
 }, {
 	id = "give_orbits",
-	label = "🪐 +1 Nivel Órbitas",
+	label = "🪐 +1 Órbitas Crono",
+}, {
+	id = "give_plasma",
+	label = "🟣 +1 Bláster Plasma",
 }, {
 	id = "give_speed",
 	label = "👟 +6 Velocidad",
@@ -617,6 +620,19 @@ local function showLevelUpModal()
 		_condition_2 = 0
 	end
 	local orbitsLvl = _condition_2
+	local _result_6 = inventory
+	if _result_6 ~= nil then
+		_result_6 = _result_6:FindFirstChild("nova_beam")
+	end
+	local _result_7 = _result_6
+	if _result_7 ~= nil then
+		_result_7 = _result_7.Value
+	end
+	local _condition_3 = _result_7
+	if _condition_3 == nil then
+		_condition_3 = 0
+	end
+	local novaLvl = _condition_3
 	-- Opciones disponibles para elegir
 	local allOptions = { {
 		id = "void_boomerang",
@@ -627,7 +643,7 @@ local function showLevelUpModal()
 		available = boomerangLvl < 3,
 	}, {
 		id = "plasma_blaster",
-		title = if plasmaLvl == 0 then "Nueva Arma: Bláster" else "Bláster de Plasma",
+		title = if plasmaLvl == 0 then "Nueva: Bláster" else "Bláster de Plasma",
 		tag = if plasmaLvl == 0 then "DESBLOQUEAR" else `Nivel {plasmaLvl + 1}`,
 		desc = if plasmaLvl == 0 then "Ráfagas teledirigidas de alta cadencia" else "Dispara 2 esferas de plasma a la vez",
 		color = Color3.new(0.45, 0.15, 0.5),
@@ -639,6 +655,13 @@ local function showLevelUpModal()
 		desc = if orbitsLvl == 0 then "Orbes cinéticos que te orbitan triturando la horda" else "+1 orbe orbital y mayor velocidad de giro",
 		color = Color3.new(0.85, 0.65, 0.1),
 		available = orbitsLvl < 3,
+	}, {
+		id = "nova_beam",
+		title = if novaLvl == 0 then "Nueva: Rayo Nova" else "Rayo Nova",
+		tag = if novaLvl == 0 then "DESBLOQUEAR" else `Nivel {novaLvl + 1}`,
+		desc = if novaLvl == 0 then "Haz láser de alta energía que calcina columnas de enemigos" else "+60% de anchura, alcance y daño brutal",
+		color = Color3.new(0.95, 0.35, 0.1),
+		available = novaLvl < 3,
 	}, {
 		id = "speed_boost",
 		title = "Propulsores de Pies",
@@ -743,9 +766,9 @@ local function showLevelUpModal()
 					selectUpgradeEvent = net:FindFirstChild("SelectUpgrade")
 				end
 			end
-			local _result_6 = selectUpgradeEvent
-			if _result_6 ~= nil then
-				_result_6:FireServer(opt.id)
+			local _result_8 = selectUpgradeEvent
+			if _result_8 ~= nil then
+				_result_8:FireServer(opt.id)
 			end
 			levelUpGui.Enabled = false
 			isClientPaused = false
@@ -1303,7 +1326,175 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	-- ▲ ReadonlyArray.forEach ▲
 end)
--- 10. Loop de recolección/imantación de gemas hacia el jugador
+-- 10. Armas: Rayo Nova (Haz de energía desintegrador)
+local fireNovaBeam
+task.spawn(function()
+	while true do
+		if isClientPaused or isGameOver then
+			task.wait(0.2)
+			continue
+		end
+		local inventory = player:FindFirstChild("Inventory")
+		local _result = inventory
+		if _result ~= nil then
+			_result = _result:FindFirstChild("nova_beam")
+		end
+		local _result_1 = _result
+		if _result_1 ~= nil then
+			_result_1 = _result_1.Value
+		end
+		local _condition = _result_1
+		if _condition == nil then
+			_condition = 0
+		end
+		local novaLvl = _condition
+		if novaLvl <= 0 then
+			task.wait(1.0)
+			continue
+		end
+		local novaDef = WEAPONS.nova_beam.levels[math.min(novaLvl, #WEAPONS.nova_beam.levels)]
+		task.wait(novaDef.cooldown)
+		if isClientPaused or isGameOver then
+			continue
+		end
+		local char = player.Character
+		local _result_2 = char
+		if _result_2 ~= nil then
+			_result_2 = _result_2:FindFirstChild("HumanoidRootPart")
+		end
+		local hrp = _result_2
+		if not hrp then
+			continue
+		end
+		local enemiesFolder = Workspace:FindFirstChild("Enemies")
+		if not enemiesFolder then
+			continue
+		end
+		-- Buscar enemigo más cercano para apuntar el haz
+		local closestDist = 9999
+		local targetPos = nil
+		for _, enemy in enemiesFolder:GetChildren() do
+			local _condition_1 = enemy:IsA("BasePart")
+			if _condition_1 then
+				local _condition_2 = enemy:GetAttribute("HP")
+				if _condition_2 == nil then
+					_condition_2 = 0
+				end
+				_condition_1 = _condition_2 > 0
+			end
+			if _condition_1 then
+				local _position = hrp.Position
+				local _position_1 = enemy.Position
+				local dist = (_position - _position_1).Magnitude
+				if dist < closestDist and dist <= novaDef.range then
+					closestDist = dist
+					targetPos = enemy.Position
+				end
+			end
+		end
+		if targetPos then
+			local _exp = hrp.Position
+			local _exp_1 = targetPos
+			local _exp_2 = novaDef.damage
+			local _exp_3 = novaDef.range
+			local _condition_1 = novaDef.duration
+			if _condition_1 == nil then
+				_condition_1 = 0.5
+			end
+			fireNovaBeam(_exp, _exp_1, _exp_2, _exp_3, _condition_1, novaDef.area)
+		end
+	end
+end)
+function fireNovaBeam(startPos, targetPos, damage, maxRange, duration, beamScale)
+	local _startPos = startPos
+	local _vector3 = Vector3.new(0, 1.2, 0)
+	local origin = _startPos + _vector3
+	local dir = (targetPos - origin).Unit
+	local _maxRange = maxRange
+	local _arg0 = dir * _maxRange
+	local endPos = origin + _arg0
+	local beamLength = maxRange
+	local _arg0_1 = beamLength / 2
+	local _arg0_2 = dir * _arg0_1
+	local centerPos = origin + _arg0_2
+	-- Cilindro de haz láser Neón
+	local beamPart = Instance.new("Part")
+	beamPart.Name = "NovaBeamVisual"
+	beamPart.Shape = Enum.PartType.Cylinder
+	beamPart.Size = Vector3.new(beamLength, 1.8 * beamScale, 1.8 * beamScale)
+	local _cFrame = CFrame.new(centerPos, endPos)
+	local _arg0_3 = CFrame.Angles(0, math.rad(90), 0)
+	beamPart.CFrame = _cFrame * _arg0_3
+	beamPart.Material = Enum.Material.Neon
+	beamPart.Color = Color3.new(1.0, 0.35, 0.1)
+	beamPart.CanCollide = false
+	beamPart.Anchored = true
+	beamPart.Parent = Workspace
+	local light = Instance.new("PointLight")
+	light.Color = beamPart.Color
+	light.Range = 16
+	light.Brightness = 3
+	light.Parent = beamPart
+	-- Dañar a todos los enemigos a lo largo de la línea del haz
+	local enemiesFolder = Workspace:FindFirstChild("Enemies")
+	if enemiesFolder then
+		for _, enemy in enemiesFolder:GetChildren() do
+			local _condition = enemy:IsA("BasePart")
+			if _condition then
+				local _condition_1 = enemy:GetAttribute("HP")
+				if _condition_1 == nil then
+					_condition_1 = 0
+				end
+				_condition = _condition_1 > 0
+			end
+			if _condition then
+				-- Distancia punto a recta del láser
+				local v = enemy.Position - origin
+				local projLength = v:Dot(dir)
+				if projLength >= 0 and projLength <= maxRange then
+					local _arg0_4 = dir * projLength
+					local closestPointOnLine = origin + _arg0_4
+					local perpDist = (enemy.Position - closestPointOnLine).Magnitude
+					if perpDist <= 3.5 * beamScale then
+						if not damageEvent then
+							local net = Workspace:FindFirstChild("Network")
+							if net then
+								damageEvent = net:FindFirstChild("DamageEnemy")
+							end
+						end
+						local _result = damageEvent
+						if _result ~= nil then
+							_result:FireServer(enemy, damage, dir)
+						end
+						VisualEffects.showDamagePopup(enemy.Position, damage, true)
+						local origColor = enemy.Color
+						enemy.Color = Color3.new(1, 1, 1)
+						task.delay(0.08, function()
+							if enemy and enemy.Parent then
+								enemy.Color = origColor
+							end
+						end)
+						local _condition_1 = (enemy:GetAttribute("HP"))
+						if _condition_1 == nil then
+							_condition_1 = 0
+						end
+						local enemyHp = _condition_1
+						if enemyHp - damage <= 0 then
+							enemiesDefeatedCount += 1
+						end
+					end
+				end
+			end
+		end
+	end
+	-- Animación de desvanecimiento del rayo
+	TweenService:Create(beamPart, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Transparency = 1,
+		Size = Vector3.new(beamLength, 0.1, 0.1),
+	}):Play()
+	Debris:AddItem(beamPart, duration + 0.05)
+end
+-- 11. Loop de recolección/imantación de gemas hacia el jugador
 RunService.Heartbeat:Connect(function(dt)
 	if isClientPaused or isGameOver then
 		return nil

@@ -378,6 +378,11 @@ Players.PlayerAdded.Connect((plr) => {
 	orbitsLvl.Value = 0;
 	orbitsLvl.Parent = inventory;
 
+	const novaLvl = new Instance("IntValue");
+	novaLvl.Name = "nova_beam";
+	novaLvl.Value = 0; // Desbloqueable en Level Up
+	novaLvl.Parent = inventory;
+
 	const maxHpBonus = new Instance("NumberValue");
 	maxHpBonus.Name = "max_hp_bonus";
 	maxHpBonus.Value = 0;
@@ -411,6 +416,12 @@ selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 			if (val) {
 				val.Value += 1;
 				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Órbitas Crono a Nivel ${val.Value}`);
+			}
+		} else if (upgradeId === "nova_beam") {
+			const val = inventory.FindFirstChild("nova_beam") as IntValue;
+			if (val) {
+				val.Value += 1;
+				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Rayo Nova a Nivel ${val.Value}`);
 			}
 		} else if (upgradeId === "speed_boost") {
 			const val = inventory.FindFirstChild("speed_bonus") as NumberValue;
@@ -484,6 +495,8 @@ debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
 			if (p) p.Value = 2;
 			const o = inventory.FindFirstChild("chrono_orbits") as IntValue;
 			if (o) o.Value = 3;
+			const n = inventory.FindFirstChild("nova_beam") as IntValue;
+			if (n) n.Value = 3;
 			print(`[Debug] ${player.Name} ha desbloqueado todas las armas a nivel máximo`);
 		}
 	} else if (action === "give_plasma") {
@@ -494,6 +507,10 @@ debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
 		const inventory = player.FindFirstChild("Inventory") as Folder;
 		const o = inventory?.FindFirstChild("chrono_orbits") as IntValue;
 		if (o) o.Value = math.min(3, o.Value + 1);
+	} else if (action === "give_nova") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const n = inventory?.FindFirstChild("nova_beam") as IntValue;
+		if (n) n.Value = math.min(3, n.Value + 1);
 	} else if (action === "give_speed") {
 		const hum = char?.FindFirstChildOfClass("Humanoid");
 		if (hum) hum.WalkSpeed += 6;
