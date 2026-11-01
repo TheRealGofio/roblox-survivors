@@ -6,9 +6,7 @@ local Players = _services.Players
 local RunService = _services.RunService
 local TweenService = _services.TweenService
 local Workspace = _services.Workspace
-local WEAPONS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "weapons").WEAPONS
 print("[r-survivors] Servidor inicializado con éxito.")
-print(`[r-survivors] Armas registradas: {WEAPONS.void_boomerang.name}, {WEAPONS.plasma_blaster.name}`)
 -- 1. Crear el suelo de la arena física (Baseplate) si no existe
 local baseplate = Workspace:FindFirstChild("Baseplate")
 if not baseplate then
@@ -51,7 +49,7 @@ if not networkFolder then
 	networkFolder.Name = "Network"
 	networkFolder.Parent = Workspace
 end
--- 3. RemoteEvents para Daño y Recogida
+-- 3. RemoteEvents para Daño, Drops y Level Up
 local damageEnemyEvent = networkFolder:FindFirstChild("DamageEnemy")
 if not damageEnemyEvent then
 	damageEnemyEvent = Instance.new("RemoteEvent")
@@ -63,6 +61,18 @@ if not collectGemEvent then
 	collectGemEvent = Instance.new("RemoteEvent")
 	collectGemEvent.Name = "CollectGem"
 	collectGemEvent.Parent = networkFolder
+end
+local levelUpEvent = networkFolder:FindFirstChild("LevelUp")
+if not levelUpEvent then
+	levelUpEvent = Instance.new("RemoteEvent")
+	levelUpEvent.Name = "LevelUp"
+	levelUpEvent.Parent = networkFolder
+end
+local selectUpgradeEvent = networkFolder:FindFirstChild("SelectUpgrade")
+if not selectUpgradeEvent then
+	selectUpgradeEvent = Instance.new("RemoteEvent")
+	selectUpgradeEvent.Name = "SelectUpgrade"
+	selectUpgradeEvent.Parent = networkFolder
 end
 -- 4. Función generadora de Gemas (Cristales de EXP)
 local function spawnExpGem(position, expValue)
@@ -104,7 +114,6 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		local currentHp = _condition
 		local newHp = math.max(0, currentHp - damage)
 		enemy:SetAttribute("HP", newHp)
-		-- Retroceso físico breve (knockback)
 		if knockbackDir then
 			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
 			if bodyVel then
@@ -119,7 +128,6 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 				end)
 			end
 		end
-		-- Comprobar muerte del enemigo
 		if newHp <= 0 then
 			local deathPos = enemy.Position
 			spawnExpGem(deathPos, 15)
@@ -150,18 +158,19 @@ collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
 			local levelStat = leaderstats:FindFirstChild("Level")
 			if expStat and levelStat then
 				expStat.Value += exp
-				-- Cada nivel requiere: nivel * 50 exp
 				local nextLevelReq = levelStat.Value * 50
 				if expStat.Value >= nextLevelReq then
 					expStat.Value -= nextLevelReq
 					levelStat.Value += 1
-					print(`[r-survivors] ¡{player.Name} ha subido al Nivel {levelStat.Value}!`)
+					print(`[r-survivors] ¡{player.Name} alcanzó el Nivel {levelStat.Value}!`)
+					-- Notificar al cliente para mostrar las 3 cartas de elección
+					levelUpEvent:FireClient(player, levelStat.Value)
 				end
 			end
 		end
 	end
 end)
--- 7. Configuración de estadísticas de jugador (leaderstats)
+-- 7. Configuración de estadísticas y estado inicial del jugador
 Players.PlayerAdded:Connect(function(plr)
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
@@ -174,12 +183,76 @@ Players.PlayerAdded:Connect(function(plr)
 	exp.Name = "EXP"
 	exp.Value = 0
 	exp.Parent = leaderstats
+	-- Carpeta para inventario y niveles de armas
+	local inventory = Instance.new("Folder")
+	inventory.Name = "Inventory"
+	inventory.Parent = plr
+	local boomerangLvl = Instance.new("IntValue")
+	boomerangLvl.Name = "void_boomerang"
+	boomerangLvl.Value = 1
+	boomerangLvl.Parent = inventory
+	local plasmaLvl = Instance.new("IntValue")
+	plasmaLvl.Name = "plasma_blaster"
+	plasmaLvl.Value = 0
+	plasmaLvl.Parent = inventory
+	local maxHpBonus = Instance.new("NumberValue")
+	maxHpBonus.Name = "max_hp_bonus"
+	maxHpBonus.Value = 0
+	maxHpBonus.Parent = inventory
+	local moveSpeedBonus = Instance.new("NumberValue")
+	moveSpeedBonus.Name = "speed_bonus"
+	moveSpeedBonus.Value = 0
+	moveSpeedBonus.Parent = inventory
 end)
--- 8. Spawner continuo de enemigos (Crawler)
+-- 8. Manejo de elección de mejoras
+selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
+	local upgradeId = upgradeIdArg
+	local inventory = player:FindFirstChild("Inventory")
+	if not inventory then
+		return nil
+	end
+	if upgradeId == "void_boomerang" then
+		local val = inventory:FindFirstChild("void_boomerang")
+		if val then
+			val.Value += 1
+			print(`[Upgrade] {player.Name} subió Búmeran a Nivel {val.Value}`)
+		end
+	elseif upgradeId == "plasma_blaster" then
+		local val = inventory:FindFirstChild("plasma_blaster")
+		if val then
+			val.Value += 1
+			print(`[Upgrade] {player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel {val.Value}`)
+		end
+	elseif upgradeId == "speed_boost" then
+		local val = inventory:FindFirstChild("speed_bonus")
+		if val then
+			val.Value += 3
+			local _hum = player.Character
+			if _hum ~= nil then
+				_hum = _hum:FindFirstChildOfClass("Humanoid")
+			end
+			local hum = _hum
+			if hum then
+				hum.WalkSpeed += 3
+			end
+		end
+	elseif upgradeId == "max_hp" then
+		local _hum = player.Character
+		if _hum ~= nil then
+			_hum = _hum:FindFirstChildOfClass("Humanoid")
+		end
+		local hum = _hum
+		if hum then
+			hum.MaxHealth += 25
+			hum.Health += 25
+		end
+	end
+end)
+-- 9. Spawner continuo de enemigos
 task.spawn(function()
 	local enemyCount = 0
 	while true do
-		task.wait(2.0)
+		task.wait(1.8)
 		if #enemiesFolder:GetChildren() < 30 then
 			enemyCount += 1
 			local dummy = Instance.new("Part")
@@ -189,7 +262,6 @@ task.spawn(function()
 			dummy.Material = Enum.Material.Neon
 			dummy.Anchored = false
 			dummy.CanCollide = true
-			-- Generar en círculo exterior alrededor de la arena
 			local angle = math.random() * math.pi * 2
 			local dist = 40 + math.random() * 20
 			dummy.Position = Vector3.new(math.cos(angle) * dist, 3, math.sin(angle) * dist)
@@ -201,7 +273,6 @@ task.spawn(function()
 			bodyVelocity.MaxForce = Vector3.new(5000, 0, 5000)
 			bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 			bodyVelocity.Parent = dummy
-			-- Daño al jugador por contacto con cooldown de invulnerabilidad
 			local lastPlayerDamageTime = 0
 			dummy.Touched:Connect(function(hitPart)
 				local char = hitPart.Parent
@@ -221,7 +292,7 @@ task.spawn(function()
 		end
 	end
 end)
--- 9. IA Activa de los enemigos: persegir al jugador vivo más cercano
+-- 10. IA Activa de los enemigos: persecución al jugador
 RunService.Heartbeat:Connect(function()
 	local allPlayers = Players:GetPlayers()
 	for _, enemy in enemiesFolder:GetChildren() do
@@ -230,7 +301,6 @@ RunService.Heartbeat:Connect(function()
 			if not bodyVel then
 				continue
 			end
-			-- Buscar jugador más cercano
 			local closestDist = 99999
 			local targetPos = nil
 			for _1, p in allPlayers do
@@ -263,7 +333,6 @@ RunService.Heartbeat:Connect(function()
 				local enemySpeed = 8.5
 				bodyVel.Velocity = dirHorizontal * enemySpeed
 			else
-				-- Si no hay jugadores vivos, caminar al centro
 				local _vector3 = Vector3.new(0, 0, 0)
 				local _position = enemy.Position
 				local dirToCenter = (_vector3 - _position).Unit

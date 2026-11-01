@@ -7,7 +7,7 @@
     "build": "rbxtsc build && \"C:\\Users\\david\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Rojo.Rojo_Microsoft.Winget.Source_8wekyb3d8bbwe\\rojo.exe\" build -o r-survivors.rbxl",
     "compile": "rbxtsc build",
     "watch": "rbxtsc --watch",
-    "serve": "rojo serve"
+    "serve": "\"C:\\Users\\david\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Rojo.Rojo_Microsoft.Winget.Source_8wekyb3d8bbwe\\rojo.exe\" serve"
   },
   "keywords": [],
   "author": "",

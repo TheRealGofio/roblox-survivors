@@ -18,6 +18,14 @@ export interface WeaponDef {
 	levels: WeaponLevelDef[];
 }
 
+export interface UpgradeOption {
+	id: string;
+	title: string;
+	type: "weapon_upgrade" | "new_weapon" | "passive";
+	description: string;
+	iconName?: string;
+}
+
 export const WEAPONS: Record<string, WeaponDef> = {
 	void_boomerang: {
 		id: "void_boomerang",
@@ -38,14 +46,25 @@ export const WEAPONS: Record<string, WeaponDef> = {
 			},
 			{
 				level: 2,
-				damage: 35,
-				cooldown: 1.3,
-				projectiles: 2,
-				range: 45,
-				speed: 38,
+				damage: 38,
+				cooldown: 1.25,
+				projectiles: 1,
+				range: 48,
+				speed: 40,
 				area: 1.2,
 				pierce: 999,
-				description: "2 búmeranes con más alcance.",
+				description: "+50% daño y mayor velocidad de vuelo.",
+			},
+			{
+				level: 3,
+				damage: 52,
+				cooldown: 1.0,
+				projectiles: 2,
+				range: 55,
+				speed: 45,
+				area: 1.4,
+				pierce: 999,
+				description: "Dispara 2 búmeranes simultáneos y reduce cooldown.",
 			},
 		],
 	},
@@ -53,18 +72,29 @@ export const WEAPONS: Record<string, WeaponDef> = {
 		id: "plasma_blaster",
 		name: "Bláster de Plasma",
 		type: "projectile",
-		description: "Disparos directos al enemigo más cercano.",
+		description: "Ráfagas rápidas de energía de plasma teledirigidas.",
 		levels: [
 			{
 				level: 1,
-				damage: 18,
-				cooldown: 0.8,
+				damage: 20,
+				cooldown: 0.7,
 				projectiles: 1,
 				range: 50,
-				speed: 60,
+				speed: 65,
 				area: 1.0,
 				pierce: 1,
-				description: "Disparo rápido teledirigido.",
+				description: "Proyectil de plasma rápido teledirigido.",
+			},
+			{
+				level: 2,
+				damage: 28,
+				cooldown: 0.55,
+				projectiles: 2,
+				range: 55,
+				speed: 70,
+				area: 1.0,
+				pierce: 1,
+				description: "Dispara 2 esferas de plasma a la vez.",
 			},
 		],
 	},

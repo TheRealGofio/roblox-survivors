@@ -2,7 +2,6 @@ import { Debris, Players, RunService, TweenService, Workspace } from "@rbxts/ser
 import { WEAPONS } from "shared/weapons";
 
 print("[r-survivors] Servidor inicializado con éxito.");
-print(`[r-survivors] Armas registradas: ${WEAPONS.void_boomerang.name}, ${WEAPONS.plasma_blaster.name}`);
 
 // 1. Crear el suelo de la arena física (Baseplate) si no existe
 let baseplate = Workspace.FindFirstChild("Baseplate") as BasePart;
@@ -14,7 +13,7 @@ if (!baseplate) {
 	baseplate.Anchored = true;
 	baseplate.CanCollide = true;
 	baseplate.Material = Enum.Material.Concrete;
-	baseplate.Color = new Color3(0.18, 0.22, 0.28); // Gris azulado oscuro cyberpunk
+	baseplate.Color = new Color3(0.18, 0.22, 0.28);
 	baseplate.Parent = Workspace;
 
 	const spawn = new Instance("SpawnLocation");
@@ -51,7 +50,7 @@ if (!networkFolder) {
 	networkFolder.Parent = Workspace;
 }
 
-// 3. RemoteEvents para Daño y Recogida
+// 3. RemoteEvents para Daño, Drops y Level Up
 let damageEnemyEvent = networkFolder.FindFirstChild("DamageEnemy") as RemoteEvent;
 if (!damageEnemyEvent) {
 	damageEnemyEvent = new Instance("RemoteEvent");
@@ -64,6 +63,20 @@ if (!collectGemEvent) {
 	collectGemEvent = new Instance("RemoteEvent");
 	collectGemEvent.Name = "CollectGem";
 	collectGemEvent.Parent = networkFolder;
+}
+
+let levelUpEvent = networkFolder.FindFirstChild("LevelUp") as RemoteEvent;
+if (!levelUpEvent) {
+	levelUpEvent = new Instance("RemoteEvent");
+	levelUpEvent.Name = "LevelUp";
+	levelUpEvent.Parent = networkFolder;
+}
+
+let selectUpgradeEvent = networkFolder.FindFirstChild("SelectUpgrade") as RemoteEvent;
+if (!selectUpgradeEvent) {
+	selectUpgradeEvent = new Instance("RemoteEvent");
+	selectUpgradeEvent.Name = "SelectUpgrade";
+	selectUpgradeEvent.Parent = networkFolder;
 }
 
 // 4. Función generadora de Gemas (Cristales de EXP)
@@ -101,7 +114,6 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 		const newHp = math.max(0, currentHp - damage);
 		enemy.SetAttribute("HP", newHp);
 
-		// Retroceso físico breve (knockback)
 		if (knockbackDir) {
 			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
 			if (bodyVel) {
@@ -115,7 +127,6 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 			}
 		}
 
-		// Comprobar muerte del enemigo
 		if (newHp <= 0) {
 			const deathPos = enemy.Position;
 			spawnExpGem(deathPos, 15);
@@ -146,19 +157,20 @@ collectGemEvent.OnServerEvent.Connect((player, gemArg) => {
 			const levelStat = leaderstats.FindFirstChild("Level") as IntValue;
 			if (expStat && levelStat) {
 				expStat.Value += exp;
-				// Cada nivel requiere: nivel * 50 exp
 				const nextLevelReq = levelStat.Value * 50;
 				if (expStat.Value >= nextLevelReq) {
 					expStat.Value -= nextLevelReq;
 					levelStat.Value += 1;
-					print(`[r-survivors] ¡${player.Name} ha subido al Nivel ${levelStat.Value}!`);
+					print(`[r-survivors] ¡${player.Name} alcanzó el Nivel ${levelStat.Value}!`);
+					// Notificar al cliente para mostrar las 3 cartas de elección
+					levelUpEvent.FireClient(player, levelStat.Value);
 				}
 			}
 		}
 	}
 });
 
-// 7. Configuración de estadísticas de jugador (leaderstats)
+// 7. Configuración de estadísticas y estado inicial del jugador
 Players.PlayerAdded.Connect((plr) => {
 	const leaderstats = new Instance("Folder");
 	leaderstats.Name = "leaderstats";
@@ -173,24 +185,82 @@ Players.PlayerAdded.Connect((plr) => {
 	exp.Name = "EXP";
 	exp.Value = 0;
 	exp.Parent = leaderstats;
+
+	// Carpeta para inventario y niveles de armas
+	const inventory = new Instance("Folder");
+	inventory.Name = "Inventory";
+	inventory.Parent = plr;
+
+	const boomerangLvl = new Instance("IntValue");
+	boomerangLvl.Name = "void_boomerang";
+	boomerangLvl.Value = 1;
+	boomerangLvl.Parent = inventory;
+
+	const plasmaLvl = new Instance("IntValue");
+	plasmaLvl.Name = "plasma_blaster";
+	plasmaLvl.Value = 0; // Bloqueado al inicio, desbloqueable en level up
+	plasmaLvl.Parent = inventory;
+
+	const maxHpBonus = new Instance("NumberValue");
+	maxHpBonus.Name = "max_hp_bonus";
+	maxHpBonus.Value = 0;
+	maxHpBonus.Parent = inventory;
+
+	const moveSpeedBonus = new Instance("NumberValue");
+	moveSpeedBonus.Name = "speed_bonus";
+	moveSpeedBonus.Value = 0;
+	moveSpeedBonus.Parent = inventory;
 });
 
-// 8. Spawner continuo de enemigos (Crawler)
+// 8. Manejo de elección de mejoras
+selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
+	const upgradeId = upgradeIdArg as string;
+	const inventory = player.FindFirstChild("Inventory") as Folder;
+	if (!inventory) return;
+
+	if (upgradeId === "void_boomerang") {
+		const val = inventory.FindFirstChild("void_boomerang") as IntValue;
+		if (val) {
+			val.Value += 1;
+			print(`[Upgrade] ${player.Name} subió Búmeran a Nivel ${val.Value}`);
+		}
+	} else if (upgradeId === "plasma_blaster") {
+		const val = inventory.FindFirstChild("plasma_blaster") as IntValue;
+		if (val) {
+			val.Value += 1;
+			print(`[Upgrade] ${player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel ${val.Value}`);
+		}
+	} else if (upgradeId === "speed_boost") {
+		const val = inventory.FindFirstChild("speed_bonus") as NumberValue;
+		if (val) {
+			val.Value += 3;
+			const hum = player.Character?.FindFirstChildOfClass("Humanoid");
+			if (hum) hum.WalkSpeed += 3;
+		}
+	} else if (upgradeId === "max_hp") {
+		const hum = player.Character?.FindFirstChildOfClass("Humanoid");
+		if (hum) {
+			hum.MaxHealth += 25;
+			hum.Health += 25;
+		}
+	}
+});
+
+// 9. Spawner continuo de enemigos
 task.spawn(() => {
 	let enemyCount = 0;
 	while (true) {
-		task.wait(2.0);
+		task.wait(1.8);
 		if (enemiesFolder.GetChildren().size() < 30) {
 			enemyCount++;
 			const dummy = new Instance("Part");
 			dummy.Name = `Crawler_${enemyCount}`;
 			dummy.Size = new Vector3(3, 3, 3);
-			dummy.Color = new Color3(0.95, 0.25, 0.2); // Rojo neón agresivo
+			dummy.Color = new Color3(0.95, 0.25, 0.2);
 			dummy.Material = Enum.Material.Neon;
 			dummy.Anchored = false;
 			dummy.CanCollide = true;
 
-			// Generar en círculo exterior alrededor de la arena
 			const angle = math.random() * math.pi * 2;
 			const dist = 40 + math.random() * 20;
 			dummy.Position = new Vector3(math.cos(angle) * dist, 3, math.sin(angle) * dist);
@@ -204,7 +274,6 @@ task.spawn(() => {
 			bodyVelocity.Velocity = new Vector3(0, 0, 0);
 			bodyVelocity.Parent = dummy;
 
-			// Daño al jugador por contacto con cooldown de invulnerabilidad
 			let lastPlayerDamageTime = 0;
 			dummy.Touched.Connect((hitPart) => {
 				const char = hitPart.Parent;
@@ -213,7 +282,7 @@ task.spawn(() => {
 					const now = os.clock();
 					if (now - lastPlayerDamageTime >= 0.8) {
 						lastPlayerDamageTime = now;
-						hum.TakeDamage(10); // 10 puntos de daño al jugador
+						hum.TakeDamage(10);
 					}
 				}
 			});
@@ -221,7 +290,7 @@ task.spawn(() => {
 	}
 });
 
-// 9. IA Activa de los enemigos: persegir al jugador vivo más cercano
+// 10. IA Activa de los enemigos: persecución al jugador
 RunService.Heartbeat.Connect(() => {
 	const allPlayers = Players.GetPlayers();
 
@@ -230,7 +299,6 @@ RunService.Heartbeat.Connect(() => {
 			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
 			if (!bodyVel) continue;
 
-			// Buscar jugador más cercano
 			let closestDist = 99999;
 			let targetPos: Vector3 | undefined = undefined;
 
@@ -250,10 +318,9 @@ RunService.Heartbeat.Connect(() => {
 			if (targetPos) {
 				const dir = targetPos.sub(enemy.Position);
 				const dirHorizontal = new Vector3(dir.X, 0, dir.Z).Unit;
-				const enemySpeed = 8.5; // Velocidad de persecución
+				const enemySpeed = 8.5;
 				bodyVel.Velocity = dirHorizontal.mul(enemySpeed);
 			} else {
-				// Si no hay jugadores vivos, caminar al centro
 				const dirToCenter = new Vector3(0, 0, 0).sub(enemy.Position).Unit;
 				bodyVel.Velocity = new Vector3(dirToCenter.X * 5, 0, dirToCenter.Z * 5);
 			}
