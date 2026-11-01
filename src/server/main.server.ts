@@ -1,8 +1,13 @@
 import { Debris, Players, RunService, TweenService, Workspace } from "@rbxts/services";
 import { ENEMY_TYPES, EnemyTypeConfig } from "shared/enemies";
 import { WEAPONS } from "shared/weapons";
+import { EnvironmentManager } from "./environment";
 
 print("[r-survivors] Servidor inicializado con éxito.");
+
+// Inicializar atmósfera e iluminación estilizada
+EnvironmentManager.setupAtmosphere();
+EnvironmentManager.buildArenaEnvironment();
 
 // Estado global de juego y tiempo de partida
 let isGamePaused = false;

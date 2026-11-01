@@ -7,7 +7,11 @@ local RunService = _services.RunService
 local TweenService = _services.TweenService
 local Workspace = _services.Workspace
 local ENEMY_TYPES = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "enemies").ENEMY_TYPES
+local EnvironmentManager = TS.import(script, game:GetService("ServerScriptService"), "TS", "environment").EnvironmentManager
 print("[r-survivors] Servidor inicializado con éxito.")
+-- Inicializar atmósfera e iluminación estilizada
+EnvironmentManager.setupAtmosphere()
+EnvironmentManager.buildArenaEnvironment()
 -- Estado global de juego y tiempo de partida
 local isGamePaused = false
 local gameElapsedTime = 0
