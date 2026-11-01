@@ -47,6 +47,28 @@ do
 		Debris:AddItem(part, 0.7)
 	end
 	_container.showDamagePopup = showDamagePopup
+	local function flashEnemy(enemy)
+		local visualModel = enemy:FindFirstChild("VisualModel")
+		if not visualModel then
+			return nil
+		end
+		local hl = visualModel:FindFirstChild("HitFlashHighlight")
+		if not hl then
+			hl = Instance.new("Highlight")
+			hl.Name = "HitFlashHighlight"
+			hl.FillColor = Color3.new(1, 1, 1)
+			hl.OutlineTransparency = 1
+			hl.FillTransparency = 0.25
+			hl.Adornee = visualModel
+			hl.Parent = visualModel
+		end
+		task.delay(0.08, function()
+			if hl and hl.Parent then
+				hl:Destroy()
+			end
+		end)
+	end
+	_container.flashEnemy = flashEnemy
 end
 return {
 	VisualEffects = VisualEffects,

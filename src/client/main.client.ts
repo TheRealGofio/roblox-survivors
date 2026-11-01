@@ -988,9 +988,11 @@ task.spawn(() => {
 	}
 });
 
-// 6.5 Gestor de Animaciones Oficiales de Enemigos en el Cliente (Run, Walk, Death)
+// 6.5 Gestor de Animaciones Oficiales de Enemigos en el Cliente (Run, Walk, Idle, Death)
 function setupEnemyAnimations(enemy: Instance) {
 	if (!enemy.IsA("BasePart")) return;
+	if (enemy.GetAttribute("AnimSetupDone")) return;
+	enemy.SetAttribute("AnimSetupDone", true);
 
 	task.spawn(() => {
 		const visualModel = enemy.WaitForChild("VisualModel", 5) as Model | undefined;
@@ -1009,44 +1011,146 @@ function setupEnemyAnimations(enemy: Instance) {
 		const animObjs = visualModel.WaitForChild("AnimationObjects", 3) as Folder | undefined;
 		if (!animObjs) return;
 
-		// Seleccionar animación de marcha / vuelo
-		const runAnim = (animObjs.FindFirstChild("Run") ??
-			animObjs.FindFirstChild("Walk") ??
-			animObjs.FindFirstChild("Fast_Flying") ??
-			animObjs.FindFirstChild("Flying_Idle") ??
-			animObjs.FindFirstChild("Idle")) as Animation | undefined;
+		const loadTrack = (name: string, priority: Enum.AnimationPriority, looped = true) => {
+			const anim = animObjs.FindFirstChild(name) as Animation | undefined;
+			if (!anim) return undefined;
+			const track = animator.LoadAnimation(anim);
+			track.Priority = priority;
+			track.Looped = looped;
+			return track;
+		};
 
-		let moveTrack: AnimationTrack | undefined = undefined;
-		if (runAnim) {
-			moveTrack = animator.LoadAnimation(runAnim);
-			moveTrack.Priority = Enum.AnimationPriority.Movement;
-			moveTrack.Looped = true;
-			moveTrack.Play();
+		// Mapeo exacto de g-survivors2 para animaciones (Walk, Run, Idle, Death)
+		const isAlpaking = visualModel.Name === "Alpaking" || (enemy.Name.find("skimmer")[0] !== undefined);
+
+		const walkTrack = isAlpaking
+			? (loadTrack("Flying_Idle", Enum.AnimationPriority.Movement) ?? loadTrack("Fast_Flying", Enum.AnimationPriority.Movement))
+			: (loadTrack("Walk", Enum.AnimationPriority.Movement) ?? loadTrack("Run", Enum.AnimationPriority.Movement));
+
+		const runTrack = isAlpaking
+			? loadTrack("Fast_Flying", Enum.AnimationPriority.Movement)
+			: loadTrack("Run", Enum.AnimationPriority.Movement);
+
+		const idleTrack = isAlpaking
+			? walkTrack
+			: (loadTrack("Idle", Enum.AnimationPriority.Idle) ?? walkTrack);
+
+		const deathTrack = loadTrack("Death", Enum.AnimationPriority.Action, false);
+
+		let currentTrack: AnimationTrack | undefined = undefined;
+		let isDead = false;
+
+		// Arrancar con animación de marcha
+		if (walkTrack) {
+			walkTrack.Play(0.1);
+			currentTrack = walkTrack;
 		}
 
-		// Reaccionar a la muerte del enemigo
-		let isDead = false;
-		const hpConn = enemy.GetAttributeChangedSignal("HP").Connect(() => {
-			const hp = (enemy.GetAttribute("HP") as number) ?? 0;
-			if (hp <= 0 && !isDead) {
-				isDead = true;
-				hpConn.Disconnect();
-				if (moveTrack) {
-					moveTrack.Stop(0.1);
+		// Loop de sincronización y cadencia de animación basado en velocidad real (idéntico a g-survivors2)
+		const baseSpeed = (enemy.GetAttribute("Speed") as number) ?? 8.0;
+		let lastPos = enemy.Position;
+
+		const heartbeatConn = RunService.Heartbeat.Connect((dt) => {
+			if (isDead || !enemy.Parent || !visualModel.Parent) return;
+
+			// Calcular velocidad física horizontal instantánea del motor
+			const physVel = enemy.AssemblyLinearVelocity;
+			const physSpeed = math.sqrt(physVel.X * physVel.X + physVel.Z * physVel.Z);
+			const effectiveSpeed = physSpeed > 0.15 ? physSpeed : 0;
+
+			const isMoving = effectiveSpeed > 0.35;
+			const isHighSpeed = effectiveSpeed > (baseSpeed * 1.15);
+
+			let targetTrack: AnimationTrack | undefined = undefined;
+			let targetSpeed = 1.0;
+
+			if (runTrack && isHighSpeed) {
+				targetTrack = runTrack;
+				targetSpeed = math.clamp(effectiveSpeed / baseSpeed, 0.85, 1.8);
+			} else if (isMoving && walkTrack) {
+				targetTrack = walkTrack;
+				targetSpeed = math.clamp(effectiveSpeed / baseSpeed, 0.75, 1.8);
+			} else {
+				targetTrack = idleTrack ?? walkTrack;
+				targetSpeed = 1.0;
+			}
+
+			if (targetTrack && currentTrack !== targetTrack) {
+				targetTrack.Play(0.2);
+				if (currentTrack && currentTrack !== targetTrack) {
+					currentTrack.Stop(0.2);
 				}
-				const deathAnim = animObjs.FindFirstChild("Death") as Animation | undefined;
-				if (deathAnim) {
-					const deathTrack = animator.LoadAnimation(deathAnim);
-					deathTrack.Priority = Enum.AnimationPriority.Action;
-					deathTrack.Looped = false;
-					deathTrack.Play();
-				}
+				currentTrack = targetTrack;
+			}
+
+			if (currentTrack) {
+				currentTrack.AdjustSpeed(targetSpeed);
 			}
 		});
 
+		// 3. Manejo de muerte suave: animación de muerte + hundimiento y desvanecimiento (idéntico a g-survivors2)
+		const onDeath = () => {
+			if (isDead) return;
+			isDead = true;
+			heartbeatConn.Disconnect();
+
+			if (currentTrack) {
+				currentTrack.Stop(0.1);
+			}
+
+			if (deathTrack) {
+				deathTrack.Play(0.1);
+			}
+
+			// Quitar hit-flash highlight si estuviera activo
+			const hl = visualModel.FindFirstChild("HitFlashHighlight");
+			if (hl) hl.Destroy();
+
+			// Secuencia de hundimiento gradual (tras 0.55s de animación, se hunde 1.8 studs y se vuelve transparente en 0.45s)
+			task.delay(0.55, () => {
+				if (!visualModel.Parent) return;
+				const startCf = visualModel.GetPivot();
+				const targetCf = startCf.sub(new Vector3(0, 1.8, 0));
+				const startTime = os.clock();
+				const duration = 0.45;
+
+				const meshParts: BasePart[] = [];
+				for (const d of visualModel.GetDescendants()) {
+					if (d.IsA("BasePart")) meshParts.push(d);
+				}
+
+				const sinkConn = RunService.RenderStepped.Connect(() => {
+					const elapsed = os.clock() - startTime;
+					const progress = math.clamp(elapsed / duration, 0, 1);
+					visualModel.PivotTo(startCf.Lerp(targetCf, progress));
+
+					for (const p of meshParts) {
+						p.Transparency = progress;
+					}
+
+					if (progress >= 1) {
+						sinkConn.Disconnect();
+						visualModel.Destroy();
+					}
+				});
+			});
+		};
+
+		const hpConn = enemy.GetAttributeChangedSignal("HP").Connect(() => {
+			const hp = (enemy.GetAttribute("HP") as number) ?? 0;
+			if (hp <= 0) onDeath();
+		});
+
+		const deadConn = enemy.GetAttributeChangedSignal("IsDead").Connect(() => {
+			if (enemy.GetAttribute("IsDead") === true) onDeath();
+		});
+
 		enemy.Destroying.Connect(() => {
+			isDead = true;
+			heartbeatConn.Disconnect();
 			hpConn.Disconnect();
-			if (moveTrack) moveTrack.Stop(0);
+			deadConn.Disconnect();
+			if (currentTrack) currentTrack.Stop(0);
 		});
 	});
 }
@@ -1179,12 +1283,7 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 							const knockbackDir = enemy.Position.sub(blade.Position).Unit;
 							damageEvent?.FireServer(enemy, damage, knockbackDir);
 							VisualEffects.showDamagePopup(enemy.Position, damage);
-
-							const origColor = enemy.Color;
-							enemy.Color = new Color3(1, 1, 1);
-							task.delay(0.08, () => {
-								if (enemy && enemy.Parent) enemy.Color = origColor;
-							});
+							VisualEffects.flashEnemy(enemy);
 
 							// Contabilizar bajas si el daño remata al enemigo
 							const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
@@ -1293,6 +1392,7 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 			}
 			damageEvent?.FireServer(targetEnemy, damage, dir);
 			VisualEffects.showDamagePopup(targetEnemy.Position, damage, true);
+			VisualEffects.flashEnemy(targetEnemy);
 
 			const enemyHp = (targetEnemy.GetAttribute("HP") as number) ?? 0;
 			if (enemyHp - damage <= 0) {
@@ -1389,12 +1489,7 @@ RunService.Heartbeat.Connect((dt) => {
 							const knockbackDir = enemy.Position.sub(hrp.Position).Unit;
 							damageEvent?.FireServer(enemy, finalOrbDmg, knockbackDir);
 							VisualEffects.showDamagePopup(enemy.Position, finalOrbDmg, true);
-
-							const origColor = enemy.Color;
-							enemy.Color = new Color3(1, 1, 1);
-							task.delay(0.08, () => {
-								if (enemy && enemy.Parent) enemy.Color = origColor;
-							});
+							VisualEffects.flashEnemy(enemy);
 
 							const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
 							if (enemyHp - finalOrbDmg <= 0) {
@@ -1502,12 +1597,7 @@ function fireNovaBeam(startPos: Vector3, targetPos: Vector3, damage: number, max
 						}
 						damageEvent?.FireServer(enemy, damage, dir);
 						VisualEffects.showDamagePopup(enemy.Position, damage, true);
-
-						const origColor = enemy.Color;
-						enemy.Color = new Color3(1, 1, 1);
-						task.delay(0.08, () => {
-							if (enemy && enemy.Parent) enemy.Color = origColor;
-						});
+						VisualEffects.flashEnemy(enemy);
 
 						const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
 						if (enemyHp - damage <= 0) {

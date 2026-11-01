@@ -36,4 +36,27 @@ export namespace VisualEffects {
 
 		Debris.AddItem(part, 0.7);
 	}
+
+	export function flashEnemy(enemy: Instance) {
+		const visualModel = enemy.FindFirstChild("VisualModel") as Model | undefined;
+		if (!visualModel) return;
+
+		let hl = visualModel.FindFirstChild("HitFlashHighlight") as Highlight | undefined;
+		if (!hl) {
+			hl = new Instance("Highlight");
+			hl.Name = "HitFlashHighlight";
+			hl.FillColor = new Color3(1, 1, 1);
+			hl.OutlineTransparency = 1;
+			hl.FillTransparency = 0.25;
+			hl.Adornee = visualModel;
+			hl.Parent = visualModel;
+		}
+
+		task.delay(0.08, () => {
+			if (hl && hl.Parent) {
+				hl.Destroy();
+			}
+		});
+	}
 }
+

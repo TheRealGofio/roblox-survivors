@@ -239,33 +239,54 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 	const knockbackDir = knockbackDirArg as Vector3 | undefined;
 
 	if (enemy && enemy.IsDescendantOf(enemiesFolder) && enemy.IsA("BasePart")) {
+		if (enemy.GetAttribute("IsDead") === true) return;
+
 		const currentHp = (enemy.GetAttribute("HP") as number) ?? 40;
 		const newHp = math.max(0, currentHp - damage);
 		enemy.SetAttribute("HP", newHp);
 
-		if (knockbackDir) {
-			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
-			const isBoss = enemy.GetAttribute("Behavior") === "boss";
-			const isTank = enemy.GetAttribute("Behavior") === "tank";
-			// Los jefes son inamovibles (inmunes a knockback), los tanques tienen alta resistencia
-			const knockbackForce = isBoss ? 0 : isTank ? 5 : 18;
-			if (bodyVel && knockbackForce > 0) {
-				bodyVel.Velocity = knockbackDir.mul(knockbackForce).add(new Vector3(0, isTank ? 1 : 4, 0));
-				enemy.SetAttribute("InKnockback", true);
-				task.delay(0.22, () => {
-					if (enemy && enemy.Parent) {
-						enemy.SetAttribute("InKnockback", false);
-					}
-				});
+		if (newHp > 0) {
+			if (knockbackDir) {
+				const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+				const isBoss = enemy.GetAttribute("Behavior") === "boss";
+				const isTank = enemy.GetAttribute("Behavior") === "tank";
+				// Los jefes son inamovibles (inmunes a knockback), los tanques tienen alta resistencia
+				const knockbackForce = isBoss ? 0 : isTank ? 5 : 18;
+				if (bodyVel && knockbackForce > 0) {
+					const massMult = math.max(1, enemy.GetMass());
+					bodyVel.MaxForce = new Vector3(massMult * 12000, massMult * 10000, massMult * 12000);
+					bodyVel.Velocity = knockbackDir.mul(knockbackForce).add(new Vector3(0, isTank ? 1 : 4, 0));
+					enemy.SetAttribute("InKnockback", true);
+					task.delay(0.22, () => {
+						if (enemy && enemy.Parent && enemy.GetAttribute("IsDead") !== true) {
+							enemy.SetAttribute("InKnockback", false);
+							bodyVel.MaxForce = new Vector3(massMult * 10000, massMult * 30000, massMult * 10000);
+						}
+					});
+				}
 			}
-		}
+		} else {
+			// MUERTE DEL ENEMIGO
+			enemy.SetAttribute("IsDead", true);
+			enemy.CanCollide = false;
 
-		if (newHp <= 0) {
 			const deathPos = enemy.Position;
 			const xpReward = (enemy.GetAttribute("XpReward") as number) ?? 15;
 			const isBoss = enemy.GetAttribute("Behavior") === "boss";
 
-			// Si muere el Boss, genera el gran cofre + gema cósmica
+			// Detener inmediatamente impulsos físicos y anclar en el sitio
+			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+			if (bodyVel) {
+				bodyVel.Velocity = new Vector3(0, 0, 0);
+				bodyVel.MaxForce = new Vector3(0, 0, 0);
+			}
+			const bodyGyro = enemy.FindFirstChildOfClass("BodyGyro");
+			if (bodyGyro) {
+				bodyGyro.MaxTorque = new Vector3(0, 0, 0);
+			}
+			enemy.Anchored = true;
+
+			// Generación de botín (Gemas / Cofres)
 			if (isBoss) {
 				spawnSupplyChest(deathPos);
 				spawnExpGem(deathPos.add(new Vector3(2, 0, 0)), 150);
@@ -274,17 +295,11 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 				spawnExpGem(deathPos, xpReward);
 			}
 
-			enemy.CanCollide = false;
-			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
-			if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
-
-			const deathDuration = 0.8;
-			TweenService.Create(enemy, new TweenInfo(deathDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Transparency: 1,
-			}).Play();
-
-			task.delay(deathDuration, () => {
-				enemy.Destroy();
+			// Dar 1.4 segundos para que el cliente reproduzca la animación completa y el hundimiento suave
+			task.delay(1.4, () => {
+				if (enemy && enemy.Parent) {
+					enemy.Destroy();
+				}
 			});
 		}
 	}
@@ -651,13 +666,18 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.Anchored = false;
 	enemy.CanCollide = true;
 	enemy.CollisionGroup = "Enemies"; // No colisiona con otros enemigos, pero sí con suelo/paredes
+	// Fricción 0 para deslizamiento ultrasuave sin oscilaciones ni enganchones con el Baseplate
+	enemy.CustomPhysicalProperties = new PhysicalProperties(0.7, 0, 0, 100, 100);
 	pcall(() => {
 		enemy.SetNetworkOwner(undefined); // Control físico exclusivo del servidor para evitar jitter
 	});
 
 	const angle = math.random() * math.pi * 2;
 	const dist = 42 + math.random() * 22;
-	enemy.Position = new Vector3(math.cos(angle) * dist, config.size.Y / 2 + 1, math.sin(angle) * dist);
+	const isFlying = config.behavior === "fast" || config.id === "skimmer";
+	const floatY = isFlying ? 1.6 : 0;
+	const spawnY = config.size.Y / 2 + 0.1 + floatY;
+	enemy.Position = new Vector3(math.cos(angle) * dist, spawnY, math.sin(angle) * dist);
 
 	// Si existe un Modelo 3D en ReplicatedStorage.EnemyModels, clonarlo e integrarlo visualmente
 	if (config.modelName) {
@@ -677,8 +697,13 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 					}
 				}
 
-				// Posicionar el modelo visual sincronizado con la hitbox ANTES de soldar
-				visualClone.PivotTo(enemy.CFrame);
+				// Alinear pies o base del modelo exactamente con el suelo (o flotación si es aéreo)
+				const [bboxCf, bboxSize] = visualClone.GetBoundingBox();
+				const pivot = visualClone.GetPivot();
+				const pivotToBottom = pivot.Position.Y - (bboxCf.Position.Y - bboxSize.Y / 2);
+				const yOffset = -config.size.Y / 2 + pivotToBottom + floatY;
+
+				visualClone.PivotTo(enemy.CFrame.mul(new CFrame(0, yOffset, 0)));
 				visualClone.Parent = enemy;
 
 				const rootWeld = new Instance("WeldConstraint");
@@ -699,26 +724,30 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.SetAttribute("XpReward", config.xpValue);
 	enemy.SetAttribute("Behavior", config.behavior);
 	enemy.SetAttribute("InKnockback", false);
+	enemy.SetAttribute("IsDead", false);
 	enemy.SetAttribute("LastShotTime", 0);
 	enemy.Parent = enemiesFolder;
 
 	const massMultiplier = math.max(1, enemy.GetMass());
 
+	// MaxForce.Y alto con Velocity.Y = 0 sostiene al enemigo en suspensión horizontal perfecta sin micro-botes de gravedad
 	const bodyVelocity = new Instance("BodyVelocity");
-	bodyVelocity.MaxForce = new Vector3(massMultiplier * 4000, 0, massMultiplier * 4000);
+	bodyVelocity.MaxForce = new Vector3(massMultiplier * 10000, massMultiplier * 30000, massMultiplier * 10000);
 	bodyVelocity.Velocity = new Vector3(0, 0, 0);
 	bodyVelocity.Parent = enemy;
 
+	// MaxTorque en los 3 ejes garantiza verticalidad total: bloquea cabeceo (pitch) y alabeo (roll) a 0
 	const bodyGyro = new Instance("BodyGyro");
-	bodyGyro.MaxTorque = new Vector3(0, massMultiplier * 50000, 0); // Rotación fluida en eje Y (Yaw)
-	bodyGyro.P = 35000;
-	bodyGyro.D = 500;
+	bodyGyro.MaxTorque = new Vector3(500000, 500000, 500000);
+	bodyGyro.P = 50000;
+	bodyGyro.D = 1000;
 	bodyGyro.CFrame = enemy.CFrame;
 	bodyGyro.Parent = enemy;
 
 	let lastPlayerDamageTime = 0;
 	enemy.Touched.Connect((hitPart) => {
 		if (isGamePaused) return;
+		if (enemy.GetAttribute("IsDead") === true) return;
 
 		const char = hitPart.Parent;
 		const hum = char?.FindFirstChildOfClass("Humanoid");
@@ -799,76 +828,79 @@ RunService.Heartbeat.Connect(() => {
 	const currentTime = os.clock();
 
 	for (const enemy of enemiesFolder.GetChildren()) {
-		if (enemy.IsA("BasePart") && enemy.GetAttribute("InKnockback") !== true) {
-			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
-			if (!bodyVel) continue;
+		if (!enemy.IsA("BasePart")) continue;
+		if (enemy.GetAttribute("IsDead") === true || (enemy.GetAttribute("HP") as number ?? 0) <= 0) continue;
+		if (enemy.GetAttribute("InKnockback") === true) continue;
 
-			const behavior = enemy.GetAttribute("Behavior") as string;
-			const baseSpeed = (enemy.GetAttribute("Speed") as number) ?? 8.0;
+		const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
+		if (!bodyVel) continue;
 
-			let closestDist = 99999;
-			let targetPos: Vector3 | undefined = undefined;
+		const behavior = enemy.GetAttribute("Behavior") as string;
+		const baseSpeed = (enemy.GetAttribute("Speed") as number) ?? 8.0;
 
-			for (const p of allPlayers) {
-				const char = p.Character;
-				const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
-				const hum = char?.FindFirstChildOfClass("Humanoid");
-				if (hrp && hum && hum.Health > 0) {
-					const dist = hrp.Position.sub(enemy.Position).Magnitude;
-					if (dist < closestDist) {
-						closestDist = dist;
-						targetPos = hrp.Position;
-					}
+		let closestDist = 99999;
+		let targetPos: Vector3 | undefined = undefined;
+
+		for (const p of allPlayers) {
+			const char = p.Character;
+			const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+			const hum = char?.FindFirstChildOfClass("Humanoid");
+			if (hrp && hum && hum.Health > 0) {
+				const dist = hrp.Position.sub(enemy.Position).Magnitude;
+				if (dist < closestDist) {
+					closestDist = dist;
+					targetPos = hrp.Position;
 				}
 			}
+		}
 
-			if (targetPos) {
-				const dir = targetPos.sub(enemy.Position);
-				const dirHorizontal = new Vector3(dir.X, 0, dir.Z).Unit;
+		if (targetPos) {
+			const dir = targetPos.sub(enemy.Position);
+			const dirHorizontal = new Vector3(dir.X, 0, dir.Z).Unit;
 
-				if (behavior === "boss") {
-					// BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles
-					bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
+			if (behavior === "boss") {
+				// BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles
+				bodyVel.Velocity = new Vector3(dirHorizontal.X * baseSpeed, 0, dirHorizontal.Z * baseSpeed);
 
-					const lastShot = (enemy.GetAttribute("LastShotTime") as number) ?? 0;
-					if (currentTime - lastShot >= 2.5) {
-						enemy.SetAttribute("LastShotTime", currentTime);
-						// Ráfaga en trío
-						fireEnemyProjectile(enemy.Position, targetPos, 18);
-						task.delay(0.2, () => fireEnemyProjectile(enemy.Position, targetPos.add(new Vector3(4, 0, 4)), 18));
-						task.delay(0.4, () => fireEnemyProjectile(enemy.Position, targetPos.add(new Vector3(-4, 0, -4)), 18));
-					}
-				} else if (behavior === "shooter") {
-					if (closestDist < 18) {
-						bodyVel.Velocity = dirHorizontal.mul(-baseSpeed * 0.8);
-					} else if (closestDist > 28) {
-						bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
-					} else {
-						const perpDir = new Vector3(-dirHorizontal.Z, 0, dirHorizontal.X);
-						bodyVel.Velocity = perpDir.mul(baseSpeed * 0.6);
-					}
-
-					const lastShot = (enemy.GetAttribute("LastShotTime") as number) ?? 0;
-					if (currentTime - lastShot >= 3.0) {
-						enemy.SetAttribute("LastShotTime", currentTime);
-						fireEnemyProjectile(enemy.Position, targetPos, 14);
-					}
+				const lastShot = (enemy.GetAttribute("LastShotTime") as number) ?? 0;
+				if (currentTime - lastShot >= 2.5) {
+					enemy.SetAttribute("LastShotTime", currentTime);
+					// Ráfaga en trío
+					fireEnemyProjectile(enemy.Position, targetPos, 18);
+					task.delay(0.2, () => fireEnemyProjectile(enemy.Position, targetPos.add(new Vector3(4, 0, 4)), 18));
+					task.delay(0.4, () => fireEnemyProjectile(enemy.Position, targetPos.add(new Vector3(-4, 0, -4)), 18));
+				}
+			} else if (behavior === "shooter") {
+				if (closestDist < 18) {
+					bodyVel.Velocity = new Vector3(-dirHorizontal.X * baseSpeed * 0.8, 0, -dirHorizontal.Z * baseSpeed * 0.8);
+				} else if (closestDist > 28) {
+					bodyVel.Velocity = new Vector3(dirHorizontal.X * baseSpeed, 0, dirHorizontal.Z * baseSpeed);
 				} else {
-					bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
+					const perpDir = new Vector3(-dirHorizontal.Z, 0, dirHorizontal.X);
+					bodyVel.Velocity = new Vector3(perpDir.X * baseSpeed * 0.6, 0, perpDir.Z * baseSpeed * 0.6);
 				}
 
-				// Orientar suavemente con BodyGyro sin alterar CFrame manualmente
-				const bodyGyro = enemy.FindFirstChildOfClass("BodyGyro");
-				if (bodyGyro) {
-					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHorizontal);
+				const lastShot = (enemy.GetAttribute("LastShotTime") as number) ?? 0;
+				if (currentTime - lastShot >= 3.0) {
+					enemy.SetAttribute("LastShotTime", currentTime);
+					fireEnemyProjectile(enemy.Position, targetPos, 14);
 				}
 			} else {
-				const dirToCenter = new Vector3(0, 0, 0).sub(enemy.Position).Unit;
-				bodyVel.Velocity = new Vector3(dirToCenter.X * 5, 0, dirToCenter.Z * 5);
-				const bodyGyro = enemy.FindFirstChildOfClass("BodyGyro");
-				if (bodyGyro) {
-					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirToCenter);
-				}
+				bodyVel.Velocity = new Vector3(dirHorizontal.X * baseSpeed, 0, dirHorizontal.Z * baseSpeed);
+			}
+
+			// Orientar suavemente con BodyGyro manteniendo pitch y roll rígidamente en 0
+			const bodyGyro = enemy.FindFirstChildOfClass("BodyGyro");
+			if (bodyGyro) {
+				bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHorizontal);
+			}
+		} else {
+			const dirToCenter = new Vector3(0, 0, 0).sub(enemy.Position).Unit;
+			const dirHoriz = new Vector3(dirToCenter.X, 0, dirToCenter.Z).Unit;
+			bodyVel.Velocity = new Vector3(dirHoriz.X * 5, 0, dirHoriz.Z * 5);
+			const bodyGyro = enemy.FindFirstChildOfClass("BodyGyro");
+			if (bodyGyro) {
+				bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHoriz);
 			}
 		}
 	}

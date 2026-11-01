@@ -1101,11 +1101,16 @@ task.spawn(function()
 		updateUi()
 	end
 end)
--- 6.5 Gestor de Animaciones Oficiales de Enemigos en el Cliente (Run, Walk, Death)
+-- 6.5 Gestor de Animaciones Oficiales de Enemigos en el Cliente (Run, Walk, Idle, Death)
 local function setupEnemyAnimations(enemy)
 	if not enemy:IsA("BasePart") then
 		return nil
 	end
+	local _value = enemy:GetAttribute("AnimSetupDone")
+	if _value ~= 0 and _value == _value and _value ~= "" and _value then
+		return nil
+	end
+	enemy:SetAttribute("AnimSetupDone", true)
 	task.spawn(function()
 		local visualModel = enemy:WaitForChild("VisualModel", 5)
 		if not visualModel then
@@ -1124,43 +1129,143 @@ local function setupEnemyAnimations(enemy)
 		if not animObjs then
 			return nil
 		end
-		-- Seleccionar animación de marcha / vuelo
-		local runAnim = (animObjs:FindFirstChild("Run") or animObjs:FindFirstChild("Walk") or animObjs:FindFirstChild("Fast_Flying") or animObjs:FindFirstChild("Flying_Idle") or animObjs:FindFirstChild("Idle"))
-		local moveTrack = nil
-		if runAnim then
-			moveTrack = animator:LoadAnimation(runAnim)
-			moveTrack.Priority = Enum.AnimationPriority.Movement
-			moveTrack.Looped = true
-			moveTrack:Play()
-		end
-		-- Reaccionar a la muerte del enemigo
-		local isDead = false
-		local hpConn
-		hpConn = enemy:GetAttributeChangedSignal("HP"):Connect(function()
-			local _condition = (enemy:GetAttribute("HP"))
-			if _condition == nil then
-				_condition = 0
+		local loadTrack = function(name, priority, looped)
+			if looped == nil then
+				looped = true
 			end
-			local hp = _condition
-			if hp <= 0 and not isDead then
-				isDead = true
-				hpConn:Disconnect()
-				if moveTrack then
-					moveTrack:Stop(0.1)
+			local anim = animObjs:FindFirstChild(name)
+			if not anim then
+				return nil
+			end
+			local track = animator:LoadAnimation(anim)
+			track.Priority = priority
+			track.Looped = looped
+			return track
+		end
+		-- Mapeo exacto de g-survivors2 para animaciones (Walk, Run, Idle, Death)
+		local isAlpaking = visualModel.Name == "Alpaking" or ((string.find(enemy.Name, "skimmer")) ~= nil)
+		local walkTrack = if isAlpaking then (loadTrack("Flying_Idle", Enum.AnimationPriority.Movement) or loadTrack("Fast_Flying", Enum.AnimationPriority.Movement)) else (loadTrack("Walk", Enum.AnimationPriority.Movement) or loadTrack("Run", Enum.AnimationPriority.Movement))
+		local runTrack = if isAlpaking then loadTrack("Fast_Flying", Enum.AnimationPriority.Movement) else loadTrack("Run", Enum.AnimationPriority.Movement)
+		local idleTrack = if isAlpaking then walkTrack else (loadTrack("Idle", Enum.AnimationPriority.Idle) or walkTrack)
+		local deathTrack = loadTrack("Death", Enum.AnimationPriority.Action, false)
+		local currentTrack = nil
+		local isDead = false
+		-- Arrancar con animación de marcha
+		if walkTrack then
+			walkTrack:Play(0.1)
+			currentTrack = walkTrack
+		end
+		-- Loop de sincronización y cadencia de animación basado en velocidad real (idéntico a g-survivors2)
+		local _condition = (enemy:GetAttribute("Speed"))
+		if _condition == nil then
+			_condition = 8.0
+		end
+		local baseSpeed = _condition
+		local lastPos = enemy.Position
+		local heartbeatConn = RunService.Heartbeat:Connect(function(dt)
+			if isDead or not enemy.Parent or not visualModel.Parent then
+				return nil
+			end
+			-- Calcular velocidad física horizontal instantánea del motor
+			local physVel = enemy.AssemblyLinearVelocity
+			local physSpeed = math.sqrt(physVel.X * physVel.X + physVel.Z * physVel.Z)
+			local effectiveSpeed = if physSpeed > 0.15 then physSpeed else 0
+			local isMoving = effectiveSpeed > 0.35
+			local isHighSpeed = effectiveSpeed > (baseSpeed * 1.15)
+			local targetTrack = nil
+			local targetSpeed = 1.0
+			if runTrack and isHighSpeed then
+				targetTrack = runTrack
+				targetSpeed = math.clamp(effectiveSpeed / baseSpeed, 0.85, 1.8)
+			elseif isMoving and walkTrack then
+				targetTrack = walkTrack
+				targetSpeed = math.clamp(effectiveSpeed / baseSpeed, 0.75, 1.8)
+			else
+				targetTrack = idleTrack or walkTrack
+				targetSpeed = 1.0
+			end
+			if targetTrack and currentTrack ~= targetTrack then
+				targetTrack:Play(0.2)
+				if currentTrack and currentTrack ~= targetTrack then
+					currentTrack:Stop(0.2)
 				end
-				local deathAnim = animObjs:FindFirstChild("Death")
-				if deathAnim then
-					local deathTrack = animator:LoadAnimation(deathAnim)
-					deathTrack.Priority = Enum.AnimationPriority.Action
-					deathTrack.Looped = false
-					deathTrack:Play()
+				currentTrack = targetTrack
+			end
+			if currentTrack then
+				currentTrack:AdjustSpeed(targetSpeed)
+			end
+		end)
+		-- 3. Manejo de muerte suave: animación de muerte + hundimiento y desvanecimiento (idéntico a g-survivors2)
+		local onDeath = function()
+			if isDead then
+				return nil
+			end
+			isDead = true
+			heartbeatConn:Disconnect()
+			if currentTrack then
+				currentTrack:Stop(0.1)
+			end
+			if deathTrack then
+				deathTrack:Play(0.1)
+			end
+			-- Quitar hit-flash highlight si estuviera activo
+			local hl = visualModel:FindFirstChild("HitFlashHighlight")
+			if hl then
+				hl:Destroy()
+			end
+			-- Secuencia de hundimiento gradual (tras 0.55s de animación, se hunde 1.8 studs y se vuelve transparente en 0.45s)
+			task.delay(0.55, function()
+				if not visualModel.Parent then
+					return nil
 				end
+				local startCf = visualModel:GetPivot()
+				local _vector3 = Vector3.new(0, 1.8, 0)
+				local targetCf = startCf - _vector3
+				local startTime = os.clock()
+				local duration = 0.45
+				local meshParts = {}
+				for _, d in visualModel:GetDescendants() do
+					if d:IsA("BasePart") then
+						table.insert(meshParts, d)
+					end
+				end
+				local sinkConn
+				sinkConn = RunService.RenderStepped:Connect(function()
+					local elapsed = os.clock() - startTime
+					local progress = math.clamp(elapsed / duration, 0, 1)
+					visualModel:PivotTo(startCf:Lerp(targetCf, progress))
+					for _, p in meshParts do
+						p.Transparency = progress
+					end
+					if progress >= 1 then
+						sinkConn:Disconnect()
+						visualModel:Destroy()
+					end
+				end)
+			end)
+		end
+		local hpConn = enemy:GetAttributeChangedSignal("HP"):Connect(function()
+			local _condition_1 = (enemy:GetAttribute("HP"))
+			if _condition_1 == nil then
+				_condition_1 = 0
+			end
+			local hp = _condition_1
+			if hp <= 0 then
+				onDeath()
+			end
+		end)
+		local deadConn = enemy:GetAttributeChangedSignal("IsDead"):Connect(function()
+			if enemy:GetAttribute("IsDead") == true then
+				onDeath()
 			end
 		end)
 		enemy.Destroying:Connect(function()
+			isDead = true
+			heartbeatConn:Disconnect()
 			hpConn:Disconnect()
-			if moveTrack then
-				moveTrack:Stop(0)
+			deadConn:Disconnect()
+			if currentTrack then
+				currentTrack:Stop(0)
 			end
 		end)
 	end)
@@ -1368,13 +1473,7 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 								_result_1:FireServer(enemy, damage, knockbackDir)
 							end
 							VisualEffects.showDamagePopup(enemy.Position, damage)
-							local origColor = enemy.Color
-							enemy.Color = Color3.new(1, 1, 1)
-							task.delay(0.08, function()
-								if enemy and enemy.Parent then
-									enemy.Color = origColor
-								end
-							end)
+							VisualEffects.flashEnemy(enemy)
 							-- Contabilizar bajas si el daño remata al enemigo
 							local _condition_2 = (enemy:GetAttribute("HP"))
 							if _condition_2 == nil then
@@ -1518,6 +1617,7 @@ function firePlasmaOrb(startPos, targetEnemy, damage, speed)
 				_result:FireServer(targetEnemy, damage, dir)
 			end
 			VisualEffects.showDamagePopup(targetEnemy.Position, damage, true)
+			VisualEffects.flashEnemy(targetEnemy)
 			local _condition = (targetEnemy:GetAttribute("HP"))
 			if _condition == nil then
 				_condition = 0
@@ -1649,13 +1749,7 @@ RunService.Heartbeat:Connect(function(dt)
 								_result_3:FireServer(enemy, finalOrbDmg, knockbackDir)
 							end
 							VisualEffects.showDamagePopup(enemy.Position, finalOrbDmg, true)
-							local origColor = enemy.Color
-							enemy.Color = Color3.new(1, 1, 1)
-							task.delay(0.08, function()
-								if enemy and enemy.Parent then
-									enemy.Color = origColor
-								end
-							end)
+							VisualEffects.flashEnemy(enemy)
 							local _condition_3 = (enemy:GetAttribute("HP"))
 							if _condition_3 == nil then
 								_condition_3 = 0
@@ -1818,13 +1912,7 @@ function fireNovaBeam(startPos, targetPos, damage, maxRange, duration, beamScale
 							_result:FireServer(enemy, damage, dir)
 						end
 						VisualEffects.showDamagePopup(enemy.Position, damage, true)
-						local origColor = enemy.Color
-						enemy.Color = Color3.new(1, 1, 1)
-						task.delay(0.08, function()
-							if enemy and enemy.Parent then
-								enemy.Color = origColor
-							end
-						end)
+						VisualEffects.flashEnemy(enemy)
 						local _condition_1 = (enemy:GetAttribute("HP"))
 						if _condition_1 == nil then
 							_condition_1 = 0

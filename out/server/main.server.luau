@@ -6,7 +6,6 @@ local PhysicsService = _services.PhysicsService
 local Players = _services.Players
 local ReplicatedStorage = _services.ReplicatedStorage
 local RunService = _services.RunService
-local TweenService = _services.TweenService
 local Workspace = _services.Workspace
 local ENEMY_TYPES = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "enemies").ENEMY_TYPES
 local EnvironmentManager = TS.import(script, game:GetService("ServerScriptService"), "TS", "environment").EnvironmentManager
@@ -228,6 +227,9 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 	local damage = if typeof(_damageArg) == "number" then damageArg else 10
 	local knockbackDir = knockbackDirArg
 	if enemy and enemy:IsDescendantOf(enemiesFolder) and enemy:IsA("BasePart") then
+		if enemy:GetAttribute("IsDead") == true then
+			return nil
+		end
 		local _condition = (enemy:GetAttribute("HP"))
 		if _condition == nil then
 			_condition = 40
@@ -235,25 +237,32 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		local currentHp = _condition
 		local newHp = math.max(0, currentHp - damage)
 		enemy:SetAttribute("HP", newHp)
-		if knockbackDir then
-			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
-			local isBoss = enemy:GetAttribute("Behavior") == "boss"
-			local isTank = enemy:GetAttribute("Behavior") == "tank"
-			-- Los jefes son inamovibles (inmunes a knockback), los tanques tienen alta resistencia
-			local knockbackForce = if isBoss then 0 elseif isTank then 5 else 18
-			if bodyVel and knockbackForce > 0 then
-				local _exp = knockbackDir * knockbackForce
-				local _vector3 = Vector3.new(0, if isTank then 1 else 4, 0)
-				bodyVel.Velocity = _exp + _vector3
-				enemy:SetAttribute("InKnockback", true)
-				task.delay(0.22, function()
-					if enemy and enemy.Parent then
-						enemy:SetAttribute("InKnockback", false)
-					end
-				end)
+		if newHp > 0 then
+			if knockbackDir then
+				local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+				local isBoss = enemy:GetAttribute("Behavior") == "boss"
+				local isTank = enemy:GetAttribute("Behavior") == "tank"
+				-- Los jefes son inamovibles (inmunes a knockback), los tanques tienen alta resistencia
+				local knockbackForce = if isBoss then 0 elseif isTank then 5 else 18
+				if bodyVel and knockbackForce > 0 then
+					local massMult = math.max(1, enemy:GetMass())
+					bodyVel.MaxForce = Vector3.new(massMult * 12000, massMult * 10000, massMult * 12000)
+					local _exp = knockbackDir * knockbackForce
+					local _vector3 = Vector3.new(0, if isTank then 1 else 4, 0)
+					bodyVel.Velocity = _exp + _vector3
+					enemy:SetAttribute("InKnockback", true)
+					task.delay(0.22, function()
+						if enemy and enemy.Parent and enemy:GetAttribute("IsDead") ~= true then
+							enemy:SetAttribute("InKnockback", false)
+							bodyVel.MaxForce = Vector3.new(massMult * 10000, massMult * 30000, massMult * 10000)
+						end
+					end)
+				end
 			end
-		end
-		if newHp <= 0 then
+		else
+			-- MUERTE DEL ENEMIGO
+			enemy:SetAttribute("IsDead", true)
+			enemy.CanCollide = false
 			local deathPos = enemy.Position
 			local _condition_1 = (enemy:GetAttribute("XpReward"))
 			if _condition_1 == nil then
@@ -261,7 +270,18 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 			end
 			local xpReward = _condition_1
 			local isBoss = enemy:GetAttribute("Behavior") == "boss"
-			-- Si muere el Boss, genera el gran cofre + gema cósmica
+			-- Detener inmediatamente impulsos físicos y anclar en el sitio
+			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+			if bodyVel then
+				bodyVel.Velocity = Vector3.new(0, 0, 0)
+				bodyVel.MaxForce = Vector3.new(0, 0, 0)
+			end
+			local bodyGyro = enemy:FindFirstChildOfClass("BodyGyro")
+			if bodyGyro then
+				bodyGyro.MaxTorque = Vector3.new(0, 0, 0)
+			end
+			enemy.Anchored = true
+			-- Generación de botín (Gemas / Cofres)
 			if isBoss then
 				spawnSupplyChest(deathPos)
 				local _vector3 = Vector3.new(2, 0, 0)
@@ -271,17 +291,11 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 			else
 				spawnExpGem(deathPos, xpReward)
 			end
-			enemy.CanCollide = false
-			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
-			if bodyVel then
-				bodyVel.Velocity = Vector3.new(0, 0, 0)
-			end
-			local deathDuration = 0.8
-			TweenService:Create(enemy, TweenInfo.new(deathDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-				Transparency = 1,
-			}):Play()
-			task.delay(deathDuration, function()
-				enemy:Destroy()
+			-- Dar 1.4 segundos para que el cliente reproduzca la animación completa y el hundimiento suave
+			task.delay(1.4, function()
+				if enemy and enemy.Parent then
+					enemy:Destroy()
+				end
 			end)
 		end
 	end
@@ -724,12 +738,17 @@ function createEnemyInstance(config, index)
 	enemy.Anchored = false
 	enemy.CanCollide = true
 	enemy.CollisionGroup = "Enemies"
+	-- Fricción 0 para deslizamiento ultrasuave sin oscilaciones ni enganchones con el Baseplate
+	enemy.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0, 0, 100, 100)
 	pcall(function()
 		enemy:SetNetworkOwner(nil)
 	end)
 	local angle = math.random() * math.pi * 2
 	local dist = 42 + math.random() * 22
-	enemy.Position = Vector3.new(math.cos(angle) * dist, config.size.Y / 2 + 1, math.sin(angle) * dist)
+	local isFlying = config.behavior == "fast" or config.id == "skimmer"
+	local floatY = if isFlying then 1.6 else 0
+	local spawnY = config.size.Y / 2 + 0.1 + floatY
+	enemy.Position = Vector3.new(math.cos(angle) * dist, spawnY, math.sin(angle) * dist)
 	-- Si existe un Modelo 3D en ReplicatedStorage.EnemyModels, clonarlo e integrarlo visualmente
 	local _value = config.modelName
 	if _value ~= "" and _value then
@@ -751,8 +770,14 @@ function createEnemyInstance(config, index)
 						desc.Massless = true
 					end
 				end
-				-- Posicionar el modelo visual sincronizado con la hitbox ANTES de soldar
-				visualClone:PivotTo(enemy.CFrame)
+				-- Alinear pies o base del modelo exactamente con el suelo (o flotación si es aéreo)
+				local bboxCf, bboxSize = visualClone:GetBoundingBox()
+				local pivot = visualClone:GetPivot()
+				local pivotToBottom = pivot.Position.Y - (bboxCf.Position.Y - bboxSize.Y / 2)
+				local yOffset = -config.size.Y / 2 + pivotToBottom + floatY
+				local _cFrame = enemy.CFrame
+				local _cFrame_1 = CFrame.new(0, yOffset, 0)
+				visualClone:PivotTo(_cFrame * _cFrame_1)
 				visualClone.Parent = enemy
 				local rootWeld = Instance.new("WeldConstraint")
 				rootWeld.Part0 = enemy
@@ -770,22 +795,28 @@ function createEnemyInstance(config, index)
 	enemy:SetAttribute("XpReward", config.xpValue)
 	enemy:SetAttribute("Behavior", config.behavior)
 	enemy:SetAttribute("InKnockback", false)
+	enemy:SetAttribute("IsDead", false)
 	enemy:SetAttribute("LastShotTime", 0)
 	enemy.Parent = enemiesFolder
 	local massMultiplier = math.max(1, enemy:GetMass())
+	-- MaxForce.Y alto con Velocity.Y = 0 sostiene al enemigo en suspensión horizontal perfecta sin micro-botes de gravedad
 	local bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 4000, 0, massMultiplier * 4000)
+	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 10000, massMultiplier * 30000, massMultiplier * 10000)
 	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 	bodyVelocity.Parent = enemy
+	-- MaxTorque en los 3 ejes garantiza verticalidad total: bloquea cabeceo (pitch) y alabeo (roll) a 0
 	local bodyGyro = Instance.new("BodyGyro")
-	bodyGyro.MaxTorque = Vector3.new(0, massMultiplier * 50000, 0)
-	bodyGyro.P = 35000
-	bodyGyro.D = 500
+	bodyGyro.MaxTorque = Vector3.new(500000, 500000, 500000)
+	bodyGyro.P = 50000
+	bodyGyro.D = 1000
 	bodyGyro.CFrame = enemy.CFrame
 	bodyGyro.Parent = enemy
 	local lastPlayerDamageTime = 0
 	enemy.Touched:Connect(function(hitPart)
 		if isGamePaused then
+			return nil
+		end
+		if enemy:GetAttribute("IsDead") == true then
 			return nil
 		end
 		local char = hitPart.Parent
@@ -865,108 +896,122 @@ RunService.Heartbeat:Connect(function()
 	local allPlayers = Players:GetPlayers()
 	local currentTime = os.clock()
 	for _, enemy in enemiesFolder:GetChildren() do
-		if enemy:IsA("BasePart") and enemy:GetAttribute("InKnockback") ~= true then
-			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
-			if not bodyVel then
-				continue
+		if not enemy:IsA("BasePart") then
+			continue
+		end
+		local _condition = enemy:GetAttribute("IsDead") == true
+		if not _condition then
+			local _condition_1 = enemy:GetAttribute("HP")
+			if _condition_1 == nil then
+				_condition_1 = 0
 			end
-			local behavior = enemy:GetAttribute("Behavior")
-			local _condition = (enemy:GetAttribute("Speed"))
-			if _condition == nil then
-				_condition = 8.0
+			_condition = _condition_1 <= 0
+		end
+		if _condition then
+			continue
+		end
+		if enemy:GetAttribute("InKnockback") == true then
+			continue
+		end
+		local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+		if not bodyVel then
+			continue
+		end
+		local behavior = enemy:GetAttribute("Behavior")
+		local _condition_1 = (enemy:GetAttribute("Speed"))
+		if _condition_1 == nil then
+			_condition_1 = 8.0
+		end
+		local baseSpeed = _condition_1
+		local closestDist = 99999
+		local targetPos = nil
+		for _1, p in allPlayers do
+			local char = p.Character
+			local _result = char
+			if _result ~= nil then
+				_result = _result:FindFirstChild("HumanoidRootPart")
 			end
-			local baseSpeed = _condition
-			local closestDist = 99999
-			local targetPos = nil
-			for _1, p in allPlayers do
-				local char = p.Character
-				local _result = char
-				if _result ~= nil then
-					_result = _result:FindFirstChild("HumanoidRootPart")
-				end
-				local hrp = _result
-				local _hum = char
-				if _hum ~= nil then
-					_hum = _hum:FindFirstChildOfClass("Humanoid")
-				end
-				local hum = _hum
-				if hrp and hum and hum.Health > 0 then
-					local _position = hrp.Position
-					local _position_1 = enemy.Position
-					local dist = (_position - _position_1).Magnitude
-					if dist < closestDist then
-						closestDist = dist
-						targetPos = hrp.Position
-					end
+			local hrp = _result
+			local _hum = char
+			if _hum ~= nil then
+				_hum = _hum:FindFirstChildOfClass("Humanoid")
+			end
+			local hum = _hum
+			if hrp and hum and hum.Health > 0 then
+				local _position = hrp.Position
+				local _position_1 = enemy.Position
+				local dist = (_position - _position_1).Magnitude
+				if dist < closestDist then
+					closestDist = dist
+					targetPos = hrp.Position
 				end
 			end
-			if targetPos then
-				local _targetPos = targetPos
-				local _position = enemy.Position
-				local dir = _targetPos - _position
-				local dirHorizontal = Vector3.new(dir.X, 0, dir.Z).Unit
-				if behavior == "boss" then
-					-- BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles
-					bodyVel.Velocity = dirHorizontal * baseSpeed
-					local _condition_1 = (enemy:GetAttribute("LastShotTime"))
-					if _condition_1 == nil then
-						_condition_1 = 0
-					end
-					local lastShot = _condition_1
-					if currentTime - lastShot >= 2.5 then
-						enemy:SetAttribute("LastShotTime", currentTime)
-						-- Ráfaga en trío
-						fireEnemyProjectile(enemy.Position, targetPos, 18)
-						task.delay(0.2, function()
-							local _exp = enemy.Position
-							local _targetPos_1 = targetPos
-							local _vector3 = Vector3.new(4, 0, 4)
-							return fireEnemyProjectile(_exp, _targetPos_1 + _vector3, 18)
-						end)
-						task.delay(0.4, function()
-							local _exp = enemy.Position
-							local _targetPos_1 = targetPos
-							local _vector3 = Vector3.new(-4, 0, -4)
-							return fireEnemyProjectile(_exp, _targetPos_1 + _vector3, 18)
-						end)
-					end
-				elseif behavior == "shooter" then
-					if closestDist < 18 then
-						local _arg0 = -baseSpeed * 0.8
-						bodyVel.Velocity = dirHorizontal * _arg0
-					elseif closestDist > 28 then
-						bodyVel.Velocity = dirHorizontal * baseSpeed
-					else
-						local perpDir = Vector3.new(-dirHorizontal.Z, 0, dirHorizontal.X)
-						local _arg0 = baseSpeed * 0.6
-						bodyVel.Velocity = perpDir * _arg0
-					end
-					local _condition_1 = (enemy:GetAttribute("LastShotTime"))
-					if _condition_1 == nil then
-						_condition_1 = 0
-					end
-					local lastShot = _condition_1
-					if currentTime - lastShot >= 3.0 then
-						enemy:SetAttribute("LastShotTime", currentTime)
-						fireEnemyProjectile(enemy.Position, targetPos, 14)
-					end
+		end
+		if targetPos then
+			local _targetPos = targetPos
+			local _position = enemy.Position
+			local dir = _targetPos - _position
+			local dirHorizontal = Vector3.new(dir.X, 0, dir.Z).Unit
+			if behavior == "boss" then
+				-- BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles
+				bodyVel.Velocity = Vector3.new(dirHorizontal.X * baseSpeed, 0, dirHorizontal.Z * baseSpeed)
+				local _condition_2 = (enemy:GetAttribute("LastShotTime"))
+				if _condition_2 == nil then
+					_condition_2 = 0
+				end
+				local lastShot = _condition_2
+				if currentTime - lastShot >= 2.5 then
+					enemy:SetAttribute("LastShotTime", currentTime)
+					-- Ráfaga en trío
+					fireEnemyProjectile(enemy.Position, targetPos, 18)
+					task.delay(0.2, function()
+						local _exp = enemy.Position
+						local _targetPos_1 = targetPos
+						local _vector3 = Vector3.new(4, 0, 4)
+						return fireEnemyProjectile(_exp, _targetPos_1 + _vector3, 18)
+					end)
+					task.delay(0.4, function()
+						local _exp = enemy.Position
+						local _targetPos_1 = targetPos
+						local _vector3 = Vector3.new(-4, 0, -4)
+						return fireEnemyProjectile(_exp, _targetPos_1 + _vector3, 18)
+					end)
+				end
+			elseif behavior == "shooter" then
+				if closestDist < 18 then
+					bodyVel.Velocity = Vector3.new(-dirHorizontal.X * baseSpeed * 0.8, 0, -dirHorizontal.Z * baseSpeed * 0.8)
+				elseif closestDist > 28 then
+					bodyVel.Velocity = Vector3.new(dirHorizontal.X * baseSpeed, 0, dirHorizontal.Z * baseSpeed)
 				else
-					bodyVel.Velocity = dirHorizontal * baseSpeed
+					local perpDir = Vector3.new(-dirHorizontal.Z, 0, dirHorizontal.X)
+					bodyVel.Velocity = Vector3.new(perpDir.X * baseSpeed * 0.6, 0, perpDir.Z * baseSpeed * 0.6)
 				end
-				-- Orientar suavemente con BodyGyro sin alterar CFrame manualmente
-				local bodyGyro = enemy:FindFirstChildOfClass("BodyGyro")
-				if bodyGyro then
-					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHorizontal)
+				local _condition_2 = (enemy:GetAttribute("LastShotTime"))
+				if _condition_2 == nil then
+					_condition_2 = 0
+				end
+				local lastShot = _condition_2
+				if currentTime - lastShot >= 3.0 then
+					enemy:SetAttribute("LastShotTime", currentTime)
+					fireEnemyProjectile(enemy.Position, targetPos, 14)
 				end
 			else
-				local _vector3 = Vector3.new(0, 0, 0)
-				local _position = enemy.Position
-				local dirToCenter = (_vector3 - _position).Unit
-				bodyVel.Velocity = Vector3.new(dirToCenter.X * 5, 0, dirToCenter.Z * 5)
-				local bodyGyro = enemy:FindFirstChildOfClass("BodyGyro")
-				if bodyGyro then
-					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirToCenter)
-				end
+				bodyVel.Velocity = Vector3.new(dirHorizontal.X * baseSpeed, 0, dirHorizontal.Z * baseSpeed)
+			end
+			-- Orientar suavemente con BodyGyro manteniendo pitch y roll rígidamente en 0
+			local bodyGyro = enemy:FindFirstChildOfClass("BodyGyro")
+			if bodyGyro then
+				bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHorizontal)
+			end
+		else
+			local _vector3 = Vector3.new(0, 0, 0)
+			local _position = enemy.Position
+			local dirToCenter = (_vector3 - _position).Unit
+			local dirHoriz = Vector3.new(dirToCenter.X, 0, dirToCenter.Z).Unit
+			bodyVel.Velocity = Vector3.new(dirHoriz.X * 5, 0, dirHoriz.Z * 5)
+			local bodyGyro = enemy:FindFirstChildOfClass("BodyGyro")
+			if bodyGyro then
+				bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHoriz)
 			end
 		end
 	end
