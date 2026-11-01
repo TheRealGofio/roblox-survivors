@@ -3,6 +3,7 @@ local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_incl
 local _services = TS.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services")
 local Debris = _services.Debris
 local Players = _services.Players
+local RunService = _services.RunService
 local TweenService = _services.TweenService
 local Workspace = _services.Workspace
 local WEAPONS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "weapons").WEAPONS
@@ -20,7 +21,6 @@ if not baseplate then
 	baseplate.Material = Enum.Material.Concrete
 	baseplate.Color = Color3.new(0.18, 0.22, 0.28)
 	baseplate.Parent = Workspace
-	-- Añadir un SpawnLocation encima del suelo
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "SpawnLocation"
 	spawn.Size = Vector3.new(12, 1, 12)
@@ -83,16 +83,14 @@ local function spawnExpGem(position, expValue)
 	gem:SetAttribute("ExpValue", expValue)
 	gem:SetAttribute("Collected", false)
 	gem.Parent = dropsFolder
-	-- Pequeña luz tenue para ambiente cyberpunk
 	local light = Instance.new("PointLight")
 	light.Color = gem.Color
 	light.Range = 6
 	light.Brightness = 1.2
 	light.Parent = gem
-	-- Despawn automático tras 40 segundos si no se recoge
-	Debris:AddItem(gem, 40)
+	Debris:AddItem(gem, 45)
 end
--- 5. Manejo del daño recibido en el servidor
+-- 5. Manejo del daño a enemigos recibido desde el cliente
 damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, knockbackDirArg)
 	local enemy = enemyArg
 	local _damageArg = damageArg
@@ -106,20 +104,17 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		local currentHp = _condition
 		local newHp = math.max(0, currentHp - damage)
 		enemy:SetAttribute("HP", newHp)
-		-- Efecto de retroceso físico (knockback)
+		-- Retroceso físico breve (knockback)
 		if knockbackDir then
 			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
 			if bodyVel then
 				local _exp = knockbackDir * 18
 				local _vector3 = Vector3.new(0, 4, 0)
 				bodyVel.Velocity = _exp + _vector3
-				task.delay(0.18, function()
-					if enemy and enemy.Parent and bodyVel.Parent then
-						-- Reanudar marcha hacia el centro/jugador
-						local _vector3_1 = Vector3.new(0, 0, 0)
-						local _position = enemy.Position
-						local dirToCenter = (_vector3_1 - _position).Unit
-						bodyVel.Velocity = Vector3.new(dirToCenter.X * 7, 0, dirToCenter.Z * 7)
+				enemy:SetAttribute("InKnockback", true)
+				task.delay(0.25, function()
+					if enemy and enemy.Parent then
+						enemy:SetAttribute("InKnockback", false)
 					end
 				end)
 			end
@@ -127,9 +122,7 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		-- Comprobar muerte del enemigo
 		if newHp <= 0 then
 			local deathPos = enemy.Position
-			-- Soltar gema de experiencia
 			spawnExpGem(deathPos, 15)
-			-- Efecto de muerte: encoger y destruir
 			enemy.CanCollide = false
 			TweenService:Create(enemy, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Size = Vector3.new(0.1, 0.1, 0.1),
@@ -141,7 +134,7 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 		end
 	end
 end)
--- 6. Manejo de recolección de gemas en el servidor
+-- 6. Manejo de recolección de gemas y Level Up
 collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
 	local gem = gemArg
 	if gem and gem:IsDescendantOf(dropsFolder) and gem:IsA("BasePart") then
@@ -151,12 +144,19 @@ collectGemEvent.OnServerEvent:Connect(function(player, gemArg)
 		end
 		local exp = _condition
 		gem:Destroy()
-		-- Actualizar EXP y nivel del jugador
 		local leaderstats = player:FindFirstChild("leaderstats")
 		if leaderstats then
 			local expStat = leaderstats:FindFirstChild("EXP")
-			if expStat then
+			local levelStat = leaderstats:FindFirstChild("Level")
+			if expStat and levelStat then
 				expStat.Value += exp
+				-- Cada nivel requiere: nivel * 50 exp
+				local nextLevelReq = levelStat.Value * 50
+				if expStat.Value >= nextLevelReq then
+					expStat.Value -= nextLevelReq
+					levelStat.Value += 1
+					print(`[r-survivors] ¡{player.Name} ha subido al Nivel {levelStat.Value}!`)
+				end
 			end
 		end
 	end
@@ -175,12 +175,12 @@ Players.PlayerAdded:Connect(function(plr)
 	exp.Value = 0
 	exp.Parent = leaderstats
 end)
--- 8. Spawner continuo de enemigos persiguiendo jugadores
+-- 8. Spawner continuo de enemigos (Crawler)
 task.spawn(function()
 	local enemyCount = 0
 	while true do
-		task.wait(2.2)
-		if #enemiesFolder:GetChildren() < 25 then
+		task.wait(2.0)
+		if #enemiesFolder:GetChildren() < 30 then
 			enemyCount += 1
 			local dummy = Instance.new("Part")
 			dummy.Name = `Crawler_{enemyCount}`
@@ -195,12 +195,80 @@ task.spawn(function()
 			dummy.Position = Vector3.new(math.cos(angle) * dist, 3, math.sin(angle) * dist)
 			dummy:SetAttribute("HP", 40)
 			dummy:SetAttribute("MaxHP", 40)
+			dummy:SetAttribute("InKnockback", false)
 			dummy.Parent = enemiesFolder
-			-- Movimiento hacia el centro
 			local bodyVelocity = Instance.new("BodyVelocity")
-			bodyVelocity.MaxForce = Vector3.new(4000, 0, 4000)
-			bodyVelocity.Velocity = Vector3.new(-math.cos(angle) * 7, 0, -math.sin(angle) * 7)
+			bodyVelocity.MaxForce = Vector3.new(5000, 0, 5000)
+			bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 			bodyVelocity.Parent = dummy
+			-- Daño al jugador por contacto con cooldown de invulnerabilidad
+			local lastPlayerDamageTime = 0
+			dummy.Touched:Connect(function(hitPart)
+				local char = hitPart.Parent
+				local _hum = char
+				if _hum ~= nil then
+					_hum = _hum:FindFirstChildOfClass("Humanoid")
+				end
+				local hum = _hum
+				if hum and hum.Health > 0 then
+					local now = os.clock()
+					if now - lastPlayerDamageTime >= 0.8 then
+						lastPlayerDamageTime = now
+						hum:TakeDamage(10)
+					end
+				end
+			end)
+		end
+	end
+end)
+-- 9. IA Activa de los enemigos: persegir al jugador vivo más cercano
+RunService.Heartbeat:Connect(function()
+	local allPlayers = Players:GetPlayers()
+	for _, enemy in enemiesFolder:GetChildren() do
+		if enemy:IsA("BasePart") and enemy:GetAttribute("InKnockback") ~= true then
+			local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
+			if not bodyVel then
+				continue
+			end
+			-- Buscar jugador más cercano
+			local closestDist = 99999
+			local targetPos = nil
+			for _1, p in allPlayers do
+				local char = p.Character
+				local _result = char
+				if _result ~= nil then
+					_result = _result:FindFirstChild("HumanoidRootPart")
+				end
+				local hrp = _result
+				local _hum = char
+				if _hum ~= nil then
+					_hum = _hum:FindFirstChildOfClass("Humanoid")
+				end
+				local hum = _hum
+				if hrp and hum and hum.Health > 0 then
+					local _position = hrp.Position
+					local _position_1 = enemy.Position
+					local dist = (_position - _position_1).Magnitude
+					if dist < closestDist then
+						closestDist = dist
+						targetPos = hrp.Position
+					end
+				end
+			end
+			if targetPos then
+				local _targetPos = targetPos
+				local _position = enemy.Position
+				local dir = _targetPos - _position
+				local dirHorizontal = Vector3.new(dir.X, 0, dir.Z).Unit
+				local enemySpeed = 8.5
+				bodyVel.Velocity = dirHorizontal * enemySpeed
+			else
+				-- Si no hay jugadores vivos, caminar al centro
+				local _vector3 = Vector3.new(0, 0, 0)
+				local _position = enemy.Position
+				local dirToCenter = (_vector3 - _position).Unit
+				bodyVel.Velocity = Vector3.new(dirToCenter.X * 5, 0, dirToCenter.Z * 5)
+			end
 		end
 	end
 end)
