@@ -2,6 +2,7 @@
 local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_include"):WaitForChild("RuntimeLib"))
 local _services = TS.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services")
 local Debris = _services.Debris
+local PhysicsService = _services.PhysicsService
 local Players = _services.Players
 local ReplicatedStorage = _services.ReplicatedStorage
 local RunService = _services.RunService
@@ -10,6 +11,11 @@ local Workspace = _services.Workspace
 local ENEMY_TYPES = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "enemies").ENEMY_TYPES
 local EnvironmentManager = TS.import(script, game:GetService("ServerScriptService"), "TS", "environment").EnvironmentManager
 print("[r-survivors] Servidor inicializado con éxito.")
+-- Registrar CollisionGroup "Enemies" para que los enemigos no choquen entre sí pero sí con el entorno
+pcall(function()
+	PhysicsService:RegisterCollisionGroup("Enemies")
+	PhysicsService:CollisionGroupSetCollidable("Enemies", "Enemies", false)
+end)
 -- Inicializar atmósfera e iluminación estilizada
 EnvironmentManager.setupAtmosphere()
 EnvironmentManager.buildArenaEnvironment()
@@ -270,33 +276,7 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 			if bodyVel then
 				bodyVel.Velocity = Vector3.new(0, 0, 0)
 			end
-			-- Reproducir animación oficial de Muerte (Death) si existe
-			local visualModel = enemy:FindFirstChild("VisualModel")
-			local deathDuration = 0.25
-			if visualModel then
-				local animController = visualModel:FindFirstChildOfClass("AnimationController") or visualModel:FindFirstChildOfClass("Humanoid")
-				local _animator = animController
-				if _animator ~= nil then
-					_animator = _animator:FindFirstChildOfClass("Animator")
-				end
-				local animator = _animator
-				local animObjs = visualModel:FindFirstChild("AnimationObjects")
-				local _result = animObjs
-				if _result ~= nil then
-					_result = _result:FindFirstChild("Death")
-				end
-				local deathAnim = _result
-				if animator and deathAnim then
-					-- Detener tracks anteriores
-					for _, track in animator:GetPlayingAnimationTracks() do
-						track:Stop(0.1)
-					end
-					local deathTrack = animator:LoadAnimation(deathAnim)
-					deathTrack.Looped = false
-					deathTrack:Play()
-					deathDuration = math.clamp(deathTrack.Length, 0.4, 1.2)
-				end
-			end
+			local deathDuration = 0.8
 			TweenService:Create(enemy, TweenInfo.new(deathDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Transparency = 1,
 			}):Play()
@@ -743,6 +723,10 @@ function createEnemyInstance(config, index)
 	enemy.Material = config.material
 	enemy.Anchored = false
 	enemy.CanCollide = true
+	enemy.CollisionGroup = "Enemies"
+	pcall(function()
+		enemy:SetNetworkOwner(nil)
+	end)
 	local angle = math.random() * math.pi * 2
 	local dist = 42 + math.random() * 22
 	enemy.Position = Vector3.new(math.cos(angle) * dist, config.size.Y / 2 + 1, math.sin(angle) * dist)
@@ -767,31 +751,13 @@ function createEnemyInstance(config, index)
 						desc.Massless = true
 					end
 				end
+				-- Posicionar el modelo visual sincronizado con la hitbox ANTES de soldar
+				visualClone:PivotTo(enemy.CFrame)
+				visualClone.Parent = enemy
 				local rootWeld = Instance.new("WeldConstraint")
 				rootWeld.Part0 = enemy
 				rootWeld.Part1 = primary
 				rootWeld.Parent = enemy
-				visualClone:PivotTo(CFrame.new(enemy.Position))
-				visualClone.Parent = enemy
-				-- Cargar y reproducir la animación oficial nativa (Run o Walk)
-				local animController = visualClone:FindFirstChildOfClass("AnimationController") or visualClone:FindFirstChildOfClass("Humanoid")
-				if animController then
-					local animator = animController:FindFirstChildOfClass("Animator")
-					if not animator then
-						animator = Instance.new("Animator")
-						animator.Parent = animController
-					end
-					local animObjs = visualClone:FindFirstChild("AnimationObjects")
-					if animObjs then
-						-- Priorizar Run -> Walk -> Fast_Flying -> Flying_Idle -> Idle
-						local runAnim = (animObjs:FindFirstChild("Run") or animObjs:FindFirstChild("Walk") or animObjs:FindFirstChild("Fast_Flying") or animObjs:FindFirstChild("Flying_Idle") or animObjs:FindFirstChild("Idle"))
-						if runAnim then
-							local track = animator:LoadAnimation(runAnim)
-							track.Looped = true
-							track:Play()
-						end
-					end
-				end
 				-- La parte física actúa como hitbox y collider invisible
 				enemy.Transparency = 1
 			end
@@ -806,11 +772,17 @@ function createEnemyInstance(config, index)
 	enemy:SetAttribute("InKnockback", false)
 	enemy:SetAttribute("LastShotTime", 0)
 	enemy.Parent = enemiesFolder
-	local bodyVelocity = Instance.new("BodyVelocity")
 	local massMultiplier = math.max(1, enemy:GetMass())
-	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 200, 0, massMultiplier * 200)
+	local bodyVelocity = Instance.new("BodyVelocity")
+	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 4000, 0, massMultiplier * 4000)
 	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 	bodyVelocity.Parent = enemy
+	local bodyGyro = Instance.new("BodyGyro")
+	bodyGyro.MaxTorque = Vector3.new(0, massMultiplier * 50000, 0)
+	bodyGyro.P = 35000
+	bodyGyro.D = 500
+	bodyGyro.CFrame = enemy.CFrame
+	bodyGyro.Parent = enemy
 	local lastPlayerDamageTime = 0
 	enemy.Touched:Connect(function(hitPart)
 		if isGamePaused then
@@ -981,22 +953,19 @@ RunService.Heartbeat:Connect(function()
 				else
 					bodyVel.Velocity = dirHorizontal * baseSpeed
 				end
-				-- Rotar suavemente el enemigo hacia la dirección en la que avanza
-				enemy.CFrame = CFrame.new(enemy.Position, enemy.Position + dirHorizontal)
+				-- Orientar suavemente con BodyGyro sin alterar CFrame manualmente
+				local bodyGyro = enemy:FindFirstChildOfClass("BodyGyro")
+				if bodyGyro then
+					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHorizontal)
+				end
 			else
 				local _vector3 = Vector3.new(0, 0, 0)
 				local _position = enemy.Position
 				local dirToCenter = (_vector3 - _position).Unit
 				bodyVel.Velocity = Vector3.new(dirToCenter.X * 5, 0, dirToCenter.Z * 5)
-				enemy.CFrame = CFrame.new(enemy.Position, enemy.Position + dirToCenter)
-			end
-			-- 12.1 Animaciones: Los modelos reproducen sus AnimationTracks oficiales (Run/Walk/Death) mediante su Animator.
-			-- La orientación del modelo sigue la marcha física del enemigo hacia el objetivo.
-			local visualModel = enemy:FindFirstChild("VisualModel")
-			if visualModel then
-				local primary = visualModel.PrimaryPart
-				if primary then
-					primary.CFrame = enemy.CFrame
+				local bodyGyro = enemy:FindFirstChildOfClass("BodyGyro")
+				if bodyGyro then
+					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirToCenter)
 				end
 			end
 		end

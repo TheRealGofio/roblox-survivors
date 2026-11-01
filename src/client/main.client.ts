@@ -988,6 +988,77 @@ task.spawn(() => {
 	}
 });
 
+// 6.5 Gestor de Animaciones Oficiales de Enemigos en el Cliente (Run, Walk, Death)
+function setupEnemyAnimations(enemy: Instance) {
+	if (!enemy.IsA("BasePart")) return;
+
+	task.spawn(() => {
+		const visualModel = enemy.WaitForChild("VisualModel", 5) as Model | undefined;
+		if (!visualModel) return;
+
+		const animController =
+			visualModel.FindFirstChildOfClass("AnimationController") ?? visualModel.FindFirstChildOfClass("Humanoid");
+		if (!animController) return;
+
+		let animator = animController.FindFirstChildOfClass("Animator");
+		if (!animator) {
+			animator = new Instance("Animator");
+			animator.Parent = animController;
+		}
+
+		const animObjs = visualModel.WaitForChild("AnimationObjects", 3) as Folder | undefined;
+		if (!animObjs) return;
+
+		// Seleccionar animación de marcha / vuelo
+		const runAnim = (animObjs.FindFirstChild("Run") ??
+			animObjs.FindFirstChild("Walk") ??
+			animObjs.FindFirstChild("Fast_Flying") ??
+			animObjs.FindFirstChild("Flying_Idle") ??
+			animObjs.FindFirstChild("Idle")) as Animation | undefined;
+
+		let moveTrack: AnimationTrack | undefined = undefined;
+		if (runAnim) {
+			moveTrack = animator.LoadAnimation(runAnim);
+			moveTrack.Priority = Enum.AnimationPriority.Movement;
+			moveTrack.Looped = true;
+			moveTrack.Play();
+		}
+
+		// Reaccionar a la muerte del enemigo
+		let isDead = false;
+		const hpConn = enemy.GetAttributeChangedSignal("HP").Connect(() => {
+			const hp = (enemy.GetAttribute("HP") as number) ?? 0;
+			if (hp <= 0 && !isDead) {
+				isDead = true;
+				hpConn.Disconnect();
+				if (moveTrack) {
+					moveTrack.Stop(0.1);
+				}
+				const deathAnim = animObjs.FindFirstChild("Death") as Animation | undefined;
+				if (deathAnim) {
+					const deathTrack = animator.LoadAnimation(deathAnim);
+					deathTrack.Priority = Enum.AnimationPriority.Action;
+					deathTrack.Looped = false;
+					deathTrack.Play();
+				}
+			}
+		});
+
+		enemy.Destroying.Connect(() => {
+			hpConn.Disconnect();
+			if (moveTrack) moveTrack.Stop(0);
+		});
+	});
+}
+
+task.spawn(() => {
+	const enemiesFolder = Workspace.WaitForChild("Enemies", 10) as Folder;
+	if (enemiesFolder) {
+		enemiesFolder.GetChildren().forEach(setupEnemyAnimations);
+		enemiesFolder.ChildAdded.Connect(setupEnemyAnimations);
+	}
+});
+
 // 7. Armas: Búmeran del Vacío
 task.spawn(() => {
 	while (true) {

@@ -1,9 +1,15 @@
-import { Debris, Players, ReplicatedStorage, RunService, TweenService, Workspace } from "@rbxts/services";
+import { Debris, PhysicsService, Players, ReplicatedStorage, RunService, TweenService, Workspace } from "@rbxts/services";
 import { ENEMY_TYPES, EnemyTypeConfig } from "shared/enemies";
 import { WEAPONS } from "shared/weapons";
 import { EnvironmentManager } from "./environment";
 
 print("[r-survivors] Servidor inicializado con éxito.");
+
+// Registrar CollisionGroup "Enemies" para que los enemigos no choquen entre sí pero sí con el entorno
+pcall(() => {
+	PhysicsService.RegisterCollisionGroup("Enemies");
+	PhysicsService.CollisionGroupSetCollidable("Enemies", "Enemies", false);
+});
 
 // Inicializar atmósfera e iluminación estilizada
 EnvironmentManager.setupAtmosphere();
@@ -272,28 +278,7 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 			const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
 			if (bodyVel) bodyVel.Velocity = new Vector3(0, 0, 0);
 
-			// Reproducir animación oficial de Muerte (Death) si existe
-			const visualModel = enemy.FindFirstChild("VisualModel") as Model;
-			let deathDuration = 0.25;
-
-			if (visualModel) {
-				const animController = visualModel.FindFirstChildOfClass("AnimationController") ?? visualModel.FindFirstChildOfClass("Humanoid");
-				const animator = animController?.FindFirstChildOfClass("Animator");
-				const animObjs = visualModel.FindFirstChild("AnimationObjects") as Folder;
-				const deathAnim = animObjs?.FindFirstChild("Death") as Animation;
-
-				if (animator && deathAnim) {
-					// Detener tracks anteriores
-					for (const track of animator.GetPlayingAnimationTracks()) {
-						track.Stop(0.1);
-					}
-					const deathTrack = animator.LoadAnimation(deathAnim);
-					deathTrack.Looped = false;
-					deathTrack.Play();
-					deathDuration = math.clamp(deathTrack.Length, 0.4, 1.2);
-				}
-			}
-
+			const deathDuration = 0.8;
 			TweenService.Create(enemy, new TweenInfo(deathDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 				Transparency: 1,
 			}).Play();
@@ -665,6 +650,10 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.Material = config.material;
 	enemy.Anchored = false;
 	enemy.CanCollide = true;
+	enemy.CollisionGroup = "Enemies"; // No colisiona con otros enemigos, pero sí con suelo/paredes
+	pcall(() => {
+		enemy.SetNetworkOwner(undefined); // Control físico exclusivo del servidor para evitar jitter
+	});
 
 	const angle = math.random() * math.pi * 2;
 	const dist = 42 + math.random() * 22;
@@ -688,39 +677,14 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 					}
 				}
 
+				// Posicionar el modelo visual sincronizado con la hitbox ANTES de soldar
+				visualClone.PivotTo(enemy.CFrame);
+				visualClone.Parent = enemy;
+
 				const rootWeld = new Instance("WeldConstraint");
 				rootWeld.Part0 = enemy;
 				rootWeld.Part1 = primary;
 				rootWeld.Parent = enemy;
-
-				visualClone.PivotTo(new CFrame(enemy.Position));
-				visualClone.Parent = enemy;
-
-				// Cargar y reproducir la animación oficial nativa (Run o Walk)
-				const animController = visualClone.FindFirstChildOfClass("AnimationController") ?? visualClone.FindFirstChildOfClass("Humanoid");
-				if (animController) {
-					let animator = animController.FindFirstChildOfClass("Animator");
-					if (!animator) {
-						animator = new Instance("Animator");
-						animator.Parent = animController;
-					}
-
-					const animObjs = visualClone.FindFirstChild("AnimationObjects") as Folder;
-					if (animObjs) {
-						// Priorizar Run -> Walk -> Fast_Flying -> Flying_Idle -> Idle
-						const runAnim = (animObjs.FindFirstChild("Run") ??
-							animObjs.FindFirstChild("Walk") ??
-							animObjs.FindFirstChild("Fast_Flying") ??
-							animObjs.FindFirstChild("Flying_Idle") ??
-							animObjs.FindFirstChild("Idle")) as Animation;
-
-						if (runAnim) {
-							const track = animator.LoadAnimation(runAnim);
-							track.Looped = true;
-							track.Play();
-						}
-					}
-				}
 
 				// La parte física actúa como hitbox y collider invisible
 				enemy.Transparency = 1;
@@ -738,11 +702,19 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.SetAttribute("LastShotTime", 0);
 	enemy.Parent = enemiesFolder;
 
-	const bodyVelocity = new Instance("BodyVelocity");
 	const massMultiplier = math.max(1, enemy.GetMass());
-	bodyVelocity.MaxForce = new Vector3(massMultiplier * 200, 0, massMultiplier * 200);
+
+	const bodyVelocity = new Instance("BodyVelocity");
+	bodyVelocity.MaxForce = new Vector3(massMultiplier * 4000, 0, massMultiplier * 4000);
 	bodyVelocity.Velocity = new Vector3(0, 0, 0);
 	bodyVelocity.Parent = enemy;
+
+	const bodyGyro = new Instance("BodyGyro");
+	bodyGyro.MaxTorque = new Vector3(0, massMultiplier * 50000, 0); // Rotación fluida en eje Y (Yaw)
+	bodyGyro.P = 35000;
+	bodyGyro.D = 500;
+	bodyGyro.CFrame = enemy.CFrame;
+	bodyGyro.Parent = enemy;
 
 	let lastPlayerDamageTime = 0;
 	enemy.Touched.Connect((hitPart) => {
@@ -885,21 +857,17 @@ RunService.Heartbeat.Connect(() => {
 					bodyVel.Velocity = dirHorizontal.mul(baseSpeed);
 				}
 
-				// Rotar suavemente el enemigo hacia la dirección en la que avanza
-				enemy.CFrame = new CFrame(enemy.Position, enemy.Position.add(dirHorizontal));
+				// Orientar suavemente con BodyGyro sin alterar CFrame manualmente
+				const bodyGyro = enemy.FindFirstChildOfClass("BodyGyro");
+				if (bodyGyro) {
+					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirHorizontal);
+				}
 			} else {
 				const dirToCenter = new Vector3(0, 0, 0).sub(enemy.Position).Unit;
 				bodyVel.Velocity = new Vector3(dirToCenter.X * 5, 0, dirToCenter.Z * 5);
-				enemy.CFrame = new CFrame(enemy.Position, enemy.Position.add(dirToCenter));
-			}
-
-			// 12.1 Animaciones: Los modelos reproducen sus AnimationTracks oficiales (Run/Walk/Death) mediante su Animator.
-			// La orientación del modelo sigue la marcha física del enemigo hacia el objetivo.
-			const visualModel = enemy.FindFirstChild("VisualModel") as Model;
-			if (visualModel) {
-				const primary = visualModel.PrimaryPart;
-				if (primary) {
-					primary.CFrame = enemy.CFrame;
+				const bodyGyro = enemy.FindFirstChildOfClass("BodyGyro");
+				if (bodyGyro) {
+					bodyGyro.CFrame = CFrame.lookAt(Vector3.zero, dirToCenter);
 				}
 			}
 		}

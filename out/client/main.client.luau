@@ -1101,6 +1101,80 @@ task.spawn(function()
 		updateUi()
 	end
 end)
+-- 6.5 Gestor de Animaciones Oficiales de Enemigos en el Cliente (Run, Walk, Death)
+local function setupEnemyAnimations(enemy)
+	if not enemy:IsA("BasePart") then
+		return nil
+	end
+	task.spawn(function()
+		local visualModel = enemy:WaitForChild("VisualModel", 5)
+		if not visualModel then
+			return nil
+		end
+		local animController = visualModel:FindFirstChildOfClass("AnimationController") or visualModel:FindFirstChildOfClass("Humanoid")
+		if not animController then
+			return nil
+		end
+		local animator = animController:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = animController
+		end
+		local animObjs = visualModel:WaitForChild("AnimationObjects", 3)
+		if not animObjs then
+			return nil
+		end
+		-- Seleccionar animación de marcha / vuelo
+		local runAnim = (animObjs:FindFirstChild("Run") or animObjs:FindFirstChild("Walk") or animObjs:FindFirstChild("Fast_Flying") or animObjs:FindFirstChild("Flying_Idle") or animObjs:FindFirstChild("Idle"))
+		local moveTrack = nil
+		if runAnim then
+			moveTrack = animator:LoadAnimation(runAnim)
+			moveTrack.Priority = Enum.AnimationPriority.Movement
+			moveTrack.Looped = true
+			moveTrack:Play()
+		end
+		-- Reaccionar a la muerte del enemigo
+		local isDead = false
+		local hpConn
+		hpConn = enemy:GetAttributeChangedSignal("HP"):Connect(function()
+			local _condition = (enemy:GetAttribute("HP"))
+			if _condition == nil then
+				_condition = 0
+			end
+			local hp = _condition
+			if hp <= 0 and not isDead then
+				isDead = true
+				hpConn:Disconnect()
+				if moveTrack then
+					moveTrack:Stop(0.1)
+				end
+				local deathAnim = animObjs:FindFirstChild("Death")
+				if deathAnim then
+					local deathTrack = animator:LoadAnimation(deathAnim)
+					deathTrack.Priority = Enum.AnimationPriority.Action
+					deathTrack.Looped = false
+					deathTrack:Play()
+				end
+			end
+		end)
+		enemy.Destroying:Connect(function()
+			hpConn:Disconnect()
+			if moveTrack then
+				moveTrack:Stop(0)
+			end
+		end)
+	end)
+end
+task.spawn(function()
+	local enemiesFolder = Workspace:WaitForChild("Enemies", 10)
+	if enemiesFolder then
+		local _exp = enemiesFolder:GetChildren()
+		for _k, _v in _exp do
+			setupEnemyAnimations(_v, _k - 1, _exp)
+		end
+		enemiesFolder.ChildAdded:Connect(setupEnemyAnimations)
+	end
+end)
 -- 7. Armas: Búmeran del Vacío
 local fireBoomerang
 task.spawn(function()
