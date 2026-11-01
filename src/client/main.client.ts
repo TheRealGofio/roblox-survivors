@@ -70,6 +70,21 @@ timerLabel.TextColor3 = new Color3(1, 0.9, 0.4); // Amarillo suave
 timerLabel.TextStrokeTransparency = 0.2;
 timerLabel.Parent = hudScreen;
 
+// Loop activo del temporizador
+task.spawn(() => {
+	while (true) {
+		task.wait(1.0);
+		if (!isGameOver && !isClientPaused) {
+			const elapsed = math.floor(os.clock() - startTime);
+			const mins = math.floor(elapsed / 60);
+			const secs = elapsed % 60;
+			const minStr = mins < 10 ? `0${mins}` : `${mins}`;
+			const secStr = secs < 10 ? `0${secs}` : `${secs}`;
+			timerLabel.Text = `${minStr}:${secStr}`;
+		}
+	}
+});
+
 // Indicador / Cooldown de Dash en HUD
 const dashIndicator = new Instance("Frame");
 dashIndicator.Name = "DashIndicator";

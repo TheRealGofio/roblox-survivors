@@ -67,6 +67,20 @@ timerLabel.TextSize = 22
 timerLabel.TextColor3 = Color3.new(1, 0.9, 0.4)
 timerLabel.TextStrokeTransparency = 0.2
 timerLabel.Parent = hudScreen
+-- Loop activo del temporizador
+task.spawn(function()
+	while true do
+		task.wait(1.0)
+		if not isGameOver and not isClientPaused then
+			local elapsed = math.floor(os.clock() - startTime)
+			local mins = math.floor(elapsed / 60)
+			local secs = elapsed % 60
+			local minStr = if mins < 10 then `0{mins}` else `{mins}`
+			local secStr = if secs < 10 then `0{secs}` else `{secs}`
+			timerLabel.Text = `{minStr}:{secStr}`
+		end
+	end
+end)
 -- Indicador / Cooldown de Dash en HUD
 local dashIndicator = Instance.new("Frame")
 dashIndicator.Name = "DashIndicator"
