@@ -1,0 +1,24 @@
+{
+  "name": "r-survivors",
+  "version": "1.0.0",
+  "description": "Roblox Roguelite Survivor game port powered by roblox-ts",
+  "main": "out/server/main.server.luau",
+  "scripts": {
+    "build": "rbxtsc build && \"C:\\Users\\david\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Rojo.Rojo_Microsoft.Winget.Source_8wekyb3d8bbwe\\rojo.exe\" build -o r-survivors.rbxl",
+    "compile": "rbxtsc build",
+    "watch": "rbxtsc --watch",
+    "serve": "rojo serve"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@rbxts/compiler-types": "^3.0.0-types.1",
+    "@rbxts/types": "^1.0.865",
+    "roblox-ts": "^3.0.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@rbxts/services": "^1.6.0"
+  }
+}
