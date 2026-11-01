@@ -8,39 +8,45 @@ local EnvironmentManager = {}
 do
 	local _container = EnvironmentManager
 	local function setupAtmosphere()
-		-- 1. Configuración de Iluminación Cinematográfica Sci-Fi
-		Lighting.Brightness = 2.0
-		Lighting.ClockTime = 18.2
-		Lighting.Ambient = Color3.new(0.18, 0.22, 0.32)
-		Lighting.OutdoorAmbient = Color3.new(0.25, 0.2, 0.35)
-		Lighting.ColorShift_Top = Color3.new(0.9, 0.55, 0.7)
-		Lighting.ColorShift_Bottom = Color3.new(0.08, 0.12, 0.22)
-		Lighting.FogColor = Color3.new(0.12, 0.14, 0.25)
-		Lighting.FogStart = 60
-		Lighting.FogEnd = 240
-		-- Post-procesado (Bloom & Atmósfera)
-		local bloom = Lighting:FindFirstChildOfClass("BloomEffect")
-		if not bloom then
-			bloom = Instance.new("BloomEffect")
-			bloom.Intensity = 0.85
-			bloom.Size = 24
-			bloom.Threshold = 0.75
-			bloom.Parent = Lighting
+		-- 1. Configuración de Iluminación Diurna, Acogedora y Nítida
+		Lighting.Brightness = 2.5
+		Lighting.ClockTime = 14.0
+		Lighting.Ambient = Color3.new(0.55, 0.55, 0.55)
+		Lighting.OutdoorAmbient = Color3.new(0.65, 0.65, 0.7)
+		Lighting.ColorShift_Top = Color3.new(1.0, 0.98, 0.9)
+		Lighting.ColorShift_Bottom = Color3.new(0.4, 0.45, 0.5)
+		-- Desactivar niebla oscura que tapaba el cielo
+		Lighting.FogStart = 1000
+		Lighting.FogEnd = 3000
+		Lighting.FogColor = Color3.new(0.8, 0.9, 1.0)
+		-- Eliminar efectos de postprocesado con brillos y contrastes molestos
+		local oldBloom = Lighting:FindFirstChildOfClass("BloomEffect")
+		if oldBloom then
+			oldBloom:Destroy()
 		end
-		local colorCorrection = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
-		if not colorCorrection then
-			colorCorrection = Instance.new("ColorCorrectionEffect")
-			colorCorrection.Contrast = 0.15
-			colorCorrection.Saturation = 0.25
-			colorCorrection.TintColor = Color3.new(0.96, 0.94, 1.0)
-			colorCorrection.Parent = Lighting
+		local oldColorCorrection = Lighting:FindFirstChildOfClass("ColorCorrectionEffect")
+		if oldColorCorrection then
+			oldColorCorrection:Destroy()
 		end
-		local sky = Lighting:FindFirstChildOfClass("Sky")
-		if not sky then
-			sky = Instance.new("Sky")
-			sky.CelestialBodiesShown = false
-			sky.Parent = Lighting
+		local oldSky = Lighting:FindFirstChildOfClass("Sky")
+		if oldSky then
+			oldSky:Destroy()
 		end
+		local oldAtmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+		if oldAtmosphere then
+			oldAtmosphere:Destroy()
+		end
+		-- Atmósfera limpia y azul con cielo abierto natural
+		local sky = Instance.new("Sky")
+		sky.CelestialBodiesShown = true
+		sky.Parent = Lighting
+		local atmosphere = Instance.new("Atmosphere")
+		atmosphere.Density = 0.25
+		atmosphere.Offset = 0.25
+		atmosphere.Haze = 0
+		atmosphere.Color = Color3.new(0.8, 0.88, 1.0)
+		atmosphere.Decay = Color3.new(0.5, 0.65, 0.85)
+		atmosphere.Parent = Lighting
 	end
 	_container.setupAtmosphere = setupAtmosphere
 	local function buildArenaEnvironment()
@@ -120,11 +126,11 @@ do
 			_callback(_v, _k - 1, obstacleCoords)
 		end
 		-- ▲ ReadonlyArray.forEach ▲
-		-- 3. Suelo de la Arena Decorado
+		-- 3. Suelo de la Arena Agradable
 		local baseplate = Workspace:FindFirstChild("Baseplate")
 		if baseplate then
-			baseplate.Color = Color3.new(0.1, 0.12, 0.16)
-			baseplate.Material = Enum.Material.DiamondPlate
+			baseplate.Color = Color3.new(0.35, 0.4, 0.45)
+			baseplate.Material = Enum.Material.Concrete
 		end
 		-- 4. Plataformas Tácticas Holográficas (Zonas de Buff)
 		local platformsFolder = Instance.new("Folder")

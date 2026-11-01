@@ -3,42 +3,44 @@ import { TACTICAL_PLATFORMS } from "shared/platforms";
 
 export namespace EnvironmentManager {
 	export function setupAtmosphere() {
-		// 1. Configuración de Iluminación Cinematográfica Sci-Fi
-		Lighting.Brightness = 2.0;
-		Lighting.ClockTime = 18.2; // Atardecer espacial / crepúsculo
-		Lighting.Ambient = new Color3(0.18, 0.22, 0.32);
-		Lighting.OutdoorAmbient = new Color3(0.25, 0.2, 0.35);
-		Lighting.ColorShift_Top = new Color3(0.9, 0.55, 0.7); // Tono púrpura-rosado
-		Lighting.ColorShift_Bottom = new Color3(0.08, 0.12, 0.22);
-		Lighting.FogColor = new Color3(0.12, 0.14, 0.25);
-		Lighting.FogStart = 60;
-		Lighting.FogEnd = 240;
+		// 1. Configuración de Iluminación Diurna, Acogedora y Nítida
+		Lighting.Brightness = 2.5;
+		Lighting.ClockTime = 14.0; // Plena tarde luminosa y soleada
+		Lighting.Ambient = new Color3(0.55, 0.55, 0.55);
+		Lighting.OutdoorAmbient = new Color3(0.65, 0.65, 0.7);
+		Lighting.ColorShift_Top = new Color3(1.0, 0.98, 0.9);
+		Lighting.ColorShift_Bottom = new Color3(0.4, 0.45, 0.5);
+		
+		// Desactivar niebla oscura que tapaba el cielo
+		Lighting.FogStart = 1000;
+		Lighting.FogEnd = 3000;
+		Lighting.FogColor = new Color3(0.8, 0.9, 1.0);
 
-		// Post-procesado (Bloom & Atmósfera)
-		let bloom = Lighting.FindFirstChildOfClass("BloomEffect");
-		if (!bloom) {
-			bloom = new Instance("BloomEffect");
-			bloom.Intensity = 0.85;
-			bloom.Size = 24;
-			bloom.Threshold = 0.75;
-			bloom.Parent = Lighting;
-		}
+		// Eliminar efectos de postprocesado con brillos y contrastes molestos
+		const oldBloom = Lighting.FindFirstChildOfClass("BloomEffect");
+		if (oldBloom) oldBloom.Destroy();
 
-		let colorCorrection = Lighting.FindFirstChildOfClass("ColorCorrectionEffect");
-		if (!colorCorrection) {
-			colorCorrection = new Instance("ColorCorrectionEffect");
-			colorCorrection.Contrast = 0.15;
-			colorCorrection.Saturation = 0.25;
-			colorCorrection.TintColor = new Color3(0.96, 0.94, 1.0);
-			colorCorrection.Parent = Lighting;
-		}
+		const oldColorCorrection = Lighting.FindFirstChildOfClass("ColorCorrectionEffect");
+		if (oldColorCorrection) oldColorCorrection.Destroy();
 
-		let sky = Lighting.FindFirstChildOfClass("Sky");
-		if (!sky) {
-			sky = new Instance("Sky");
-			sky.CelestialBodiesShown = false;
-			sky.Parent = Lighting;
-		}
+		const oldSky = Lighting.FindFirstChildOfClass("Sky");
+		if (oldSky) oldSky.Destroy();
+
+		const oldAtmosphere = Lighting.FindFirstChildOfClass("Atmosphere");
+		if (oldAtmosphere) oldAtmosphere.Destroy();
+
+		// Atmósfera limpia y azul con cielo abierto natural
+		const sky = new Instance("Sky");
+		sky.CelestialBodiesShown = true;
+		sky.Parent = Lighting;
+
+		const atmosphere = new Instance("Atmosphere");
+		atmosphere.Density = 0.25;
+		atmosphere.Offset = 0.25;
+		atmosphere.Haze = 0;
+		atmosphere.Color = new Color3(0.8, 0.88, 1.0);
+		atmosphere.Decay = new Color3(0.5, 0.65, 0.85);
+		atmosphere.Parent = Lighting;
 	}
 
 	export function buildArenaEnvironment() {
@@ -130,11 +132,11 @@ export namespace EnvironmentManager {
 			coreLight.Parent = core;
 		});
 
-		// 3. Suelo de la Arena Decorado
+		// 3. Suelo de la Arena Agradable
 		const baseplate = Workspace.FindFirstChild("Baseplate") as BasePart;
 		if (baseplate) {
-			baseplate.Color = new Color3(0.1, 0.12, 0.16); // Asfalto espacial profundo
-			baseplate.Material = Enum.Material.DiamondPlate; // Textura metálica futurista
+			baseplate.Color = new Color3(0.35, 0.4, 0.45); // Tono claro y limpio
+			baseplate.Material = Enum.Material.Concrete;
 		}
 
 		// 4. Plataformas Tácticas Holográficas (Zonas de Buff)
