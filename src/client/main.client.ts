@@ -1,4 +1,5 @@
 import { Debris, Players, RunService, TweenService, UserInputService, Workspace } from "@rbxts/services";
+import { TACTICAL_PLATFORMS, TacticalPlatformConfig } from "shared/platforms";
 import { WEAPONS } from "shared/weapons";
 import { VisualEffects } from "./effects";
 import { SoundManager } from "./sound";
@@ -11,6 +12,10 @@ let isClientPaused = false;
 let isGameOver = false;
 let startTime = os.clock();
 let enemiesDefeatedCount = 0;
+
+// Estado de Buff activo por Plataformas Tácticas
+let activePlatformBuff: "heal" | "damage" | "cooldown" | undefined = undefined;
+let currentBastionIndex = -1;
 
 // Sistema de Dash Táctico (Espacio / Shift)
 const DASH_COOLDOWN = 2.8;
@@ -135,6 +140,67 @@ zwText.Parent = zaWarudoIndicator;
 // Cooldown de Za Warudo (40 segundos)
 const ZA_WARUDO_COOLDOWN = 40.0;
 let lastZaWarudoTime = -ZA_WARUDO_COOLDOWN;
+
+// Indicador de Buff Activo en HUD
+const buffBadge = new Instance("TextLabel");
+buffBadge.Name = "BuffBadge";
+buffBadge.Size = new UDim2(0, 240, 0, 26);
+buffBadge.Position = new UDim2(0.5, -120, 0.83, 0);
+buffBadge.BackgroundColor3 = new Color3(0.1, 0.12, 0.16);
+buffBadge.BackgroundTransparency = 0.2;
+buffBadge.Font = Enum.Font.FredokaOne;
+buffBadge.Text = "";
+buffBadge.TextColor3 = new Color3(1, 1, 1);
+buffBadge.TextSize = 13;
+buffBadge.Visible = false;
+buffBadge.Parent = hudScreen;
+
+const bbCorner = new Instance("UICorner");
+bbCorner.CornerRadius = new UDim(0, 6);
+bbCorner.Parent = buffBadge;
+
+// Loop de chequeo de presencia en Plataformas Tácticas
+task.spawn(() => {
+	let lastHealTick = 0;
+	while (true) {
+		task.wait(0.2);
+		if (isGameOver || isClientPaused) continue;
+
+		const char = player.Character;
+		const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+		const hum = char?.FindFirstChildOfClass("Humanoid");
+		if (!hrp || !hum || hum.Health <= 0) continue;
+
+		let foundPlat: TacticalPlatformConfig | undefined = undefined;
+
+		for (const plat of TACTICAL_PLATFORMS) {
+			const dist = new Vector2(hrp.Position.X - plat.position.X, hrp.Position.Z - plat.position.Z).Magnitude;
+			if (dist <= plat.radius) {
+				foundPlat = plat;
+				break;
+			}
+		}
+
+		if (foundPlat) {
+			activePlatformBuff = foundPlat.buffType;
+			buffBadge.Text = `⚡ ${foundPlat.buffName} (${foundPlat.buffDesc})`;
+			buffBadge.TextColor3 = foundPlat.color;
+			buffBadge.Visible = true;
+
+			// Efecto de Curación Continua en Bastión Norte
+			if (foundPlat.buffType === "heal") {
+				const now = os.clock();
+				if (now - lastHealTick >= 1.0) {
+					lastHealTick = now;
+					hum.Health = math.min(hum.MaxHealth, hum.Health + 8);
+				}
+			}
+		} else {
+			activePlatformBuff = undefined;
+			buffBadge.Visible = false;
+		}
+	}
+});
 
 task.spawn(() => {
 	while (true) {
@@ -406,6 +472,7 @@ const debugCategories = [
 			{ id: "spawn_boss", label: "👑 Invocar Boss" },
 			{ id: "spawn_chest", label: "📦 Spawn Cofre" },
 			{ id: "spawn_magnet", label: "🧲 Spawn Imán" },
+			{ id: "tp_bastion", label: "🏛️ TP Bastión" },
 			{ id: "kill_all_enemies", label: "💥 Limpiar Arena" },
 		],
 	},
@@ -451,6 +518,16 @@ debugCategories.forEach((cat) => {
 		bCorner.Parent = b;
 
 		b.MouseButton1Click.Connect(() => {
+			if (btnInfo.id === "tp_bastion") {
+				// Teletransportar al jugador rotativamente a cada una de las 3 plataformas tácticas
+				const hrp = player.Character?.FindFirstChild("HumanoidRootPart") as BasePart;
+				if (hrp && TACTICAL_PLATFORMS.size() > 0) {
+					currentBastionIndex = (currentBastionIndex + 1) % TACTICAL_PLATFORMS.size();
+					const targetPlat = TACTICAL_PLATFORMS[currentBastionIndex];
+					hrp.CFrame = new CFrame(targetPlat.position.add(new Vector3(0, 3, 0)));
+				}
+				return;
+			}
 			if (!debugActionEvent) {
 				const net = Workspace.FindFirstChild("Network") as Folder;
 				if (net) debugActionEvent = net.FindFirstChild("DebugAction") as RemoteEvent;
@@ -923,7 +1000,8 @@ task.spawn(() => {
 		const boomerangLvl = (inventory?.FindFirstChild("void_boomerang") as IntValue)?.Value ?? 1;
 		const boomerangDef = WEAPONS.void_boomerang.levels[math.min(boomerangLvl, WEAPONS.void_boomerang.levels.size()) - 1];
 
-		task.wait(boomerangDef.cooldown);
+		const cdMultiplier = activePlatformBuff === "cooldown" ? 0.6 : 1.0;
+		task.wait(boomerangDef.cooldown * cdMultiplier);
 
 		if (isClientPaused || isGameOver) continue;
 
@@ -948,10 +1026,12 @@ task.spawn(() => {
 		}
 
 		if (targetPos) {
+			const dmgMultiplier = activePlatformBuff === "damage" ? 1.5 : 1.0;
+			const finalDamage = math.floor(boomerangDef.damage * dmgMultiplier);
 			const count = boomerangDef.projectiles;
 			for (let i = 0; i < count; i++) {
 				const angleOffset = count > 1 ? (i === 0 ? -0.2 : 0.2) : 0;
-				fireBoomerang(rootPart.Position, targetPos, boomerangDef.damage, boomerangDef.speed, angleOffset);
+				fireBoomerang(rootPart.Position, targetPos, finalDamage, boomerangDef.speed, angleOffset);
 			}
 		}
 	}
@@ -1067,7 +1147,8 @@ task.spawn(() => {
 		}
 
 		const plasmaDef = WEAPONS.plasma_blaster.levels[math.min(plasmaLvl, WEAPONS.plasma_blaster.levels.size()) - 1];
-		task.wait(plasmaDef.cooldown);
+		const cdMultiplier = activePlatformBuff === "cooldown" ? 0.6 : 1.0;
+		task.wait(plasmaDef.cooldown * cdMultiplier);
 
 		if (isClientPaused || isGameOver) continue;
 
@@ -1092,7 +1173,9 @@ task.spawn(() => {
 		}
 
 		if (targetEnemy) {
-			firePlasmaOrb(rootPart.Position, targetEnemy, plasmaDef.damage, plasmaDef.speed);
+			const dmgMultiplier = activePlatformBuff === "damage" ? 1.5 : 1.0;
+			const finalDamage = math.floor(plasmaDef.damage * dmgMultiplier);
+			firePlasmaOrb(rootPart.Position, targetEnemy, finalDamage, plasmaDef.speed);
 		}
 	}
 });
@@ -1230,9 +1313,11 @@ RunService.Heartbeat.Connect((dt) => {
 								if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
 							}
 
+							const dmgMultiplier = activePlatformBuff === "damage" ? 1.5 : 1.0;
+							const finalOrbDmg = math.floor(orbitDef.damage * dmgMultiplier);
 							const knockbackDir = enemy.Position.sub(hrp.Position).Unit;
-							damageEvent?.FireServer(enemy, orbitDef.damage, knockbackDir);
-							VisualEffects.showDamagePopup(enemy.Position, orbitDef.damage, true);
+							damageEvent?.FireServer(enemy, finalOrbDmg, knockbackDir);
+							VisualEffects.showDamagePopup(enemy.Position, finalOrbDmg, true);
 
 							const origColor = enemy.Color;
 							enemy.Color = new Color3(1, 1, 1);
@@ -1241,7 +1326,7 @@ RunService.Heartbeat.Connect((dt) => {
 							});
 
 							const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
-							if (enemyHp - orbitDef.damage <= 0) {
+							if (enemyHp - finalOrbDmg <= 0) {
 								enemiesDefeatedCount++;
 							}
 						}
@@ -1269,7 +1354,8 @@ task.spawn(() => {
 		}
 
 		const novaDef = WEAPONS.nova_beam.levels[math.min(novaLvl, WEAPONS.nova_beam.levels.size()) - 1];
-		task.wait(novaDef.cooldown);
+		const cdMultiplier = activePlatformBuff === "cooldown" ? 0.6 : 1.0;
+		task.wait(novaDef.cooldown * cdMultiplier);
 
 		if (isClientPaused || isGameOver) continue;
 
@@ -1295,7 +1381,9 @@ task.spawn(() => {
 		}
 
 		if (targetPos) {
-			fireNovaBeam(hrp.Position, targetPos, novaDef.damage, novaDef.range, novaDef.duration ?? 0.5, novaDef.area);
+			const dmgMultiplier = activePlatformBuff === "damage" ? 1.5 : 1.0;
+			const finalDamage = math.floor(novaDef.damage * dmgMultiplier);
+			fireNovaBeam(hrp.Position, targetPos, finalDamage, novaDef.range, novaDef.duration ?? 0.5, novaDef.area);
 		}
 	}
 });

@@ -3,6 +3,7 @@ local TS = require(game:GetService("ReplicatedStorage"):WaitForChild("rbxts_incl
 local _services = TS.import(script, game:GetService("ReplicatedStorage"), "rbxts_include", "node_modules", "@rbxts", "services")
 local Lighting = _services.Lighting
 local Workspace = _services.Workspace
+local TACTICAL_PLATFORMS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "platforms").TACTICAL_PLATFORMS
 local EnvironmentManager = {}
 do
 	local _container = EnvironmentManager
@@ -125,6 +126,84 @@ do
 			baseplate.Color = Color3.new(0.1, 0.12, 0.16)
 			baseplate.Material = Enum.Material.DiamondPlate
 		end
+		-- 4. Plataformas Tácticas Holográficas (Zonas de Buff)
+		local platformsFolder = Instance.new("Folder")
+		platformsFolder.Name = "TacticalPlatforms"
+		platformsFolder.Parent = mapFolder
+		-- ▼ ReadonlyArray.forEach ▼
+		local _callback_1 = function(plat)
+			-- Disco del suelo holográfico
+			local disk = Instance.new("Part")
+			disk.Name = plat.id
+			disk.Shape = Enum.PartType.Cylinder
+			disk.Size = Vector3.new(0.4, plat.radius * 2, plat.radius * 2)
+			local _cFrame = CFrame.new(plat.position)
+			local _arg0 = CFrame.Angles(0, 0, math.rad(90))
+			disk.CFrame = _cFrame * _arg0
+			disk.Material = Enum.Material.Neon
+			disk.Color = plat.color
+			disk.Transparency = 0.45
+			disk.CanCollide = false
+			disk.Anchored = true
+			disk:SetAttribute("BuffType", plat.buffType)
+			disk:SetAttribute("Radius", plat.radius)
+			disk.Parent = platformsFolder
+			-- Luz ambiental en el santuario
+			local light = Instance.new("PointLight")
+			light.Color = plat.color
+			light.Range = plat.radius + 6
+			light.Brightness = 2.5
+			light.Parent = disk
+			-- Pilar central rúnico
+			local pillar = Instance.new("Part")
+			pillar.Name = `{plat.id}_Pillar`
+			pillar.Size = Vector3.new(2.5, 7, 2.5)
+			local _position = plat.position
+			local _vector3 = Vector3.new(0, 3.5, 0)
+			pillar.Position = _position + _vector3
+			pillar.Material = Enum.Material.Slate
+			pillar.Color = Color3.new(0.15, 0.18, 0.22)
+			pillar.CanCollide = true
+			pillar.Anchored = true
+			pillar.Parent = platformsFolder
+			local rune = Instance.new("Part")
+			rune.Name = "RuneCore"
+			rune.Size = Vector3.new(1.4, 3.5, 1.4)
+			rune.Position = pillar.Position
+			rune.Material = Enum.Material.Neon
+			rune.Color = plat.color
+			rune.CanCollide = false
+			rune.Anchored = true
+			rune.Parent = platformsFolder
+			-- Rótulo 3D flotante
+			local bb = Instance.new("BillboardGui")
+			bb.Size = UDim2.new(0, 160, 0, 45)
+			bb.StudsOffset = Vector3.new(0, 5.5, 0)
+			bb.AlwaysOnTop = true
+			bb.Adornee = pillar
+			bb.Parent = pillar
+			local title = Instance.new("TextLabel")
+			title.Size = UDim2.new(1, 0, 0.5, 0)
+			title.BackgroundTransparency = 1
+			title.Font = Enum.Font.FredokaOne
+			title.Text = plat.title
+			title.TextColor3 = plat.color
+			title.TextSize = 15
+			title.Parent = bb
+			local desc = Instance.new("TextLabel")
+			desc.Size = UDim2.new(1, 0, 0.5, 0)
+			desc.Position = UDim2.new(0, 0, 0.5, 0)
+			desc.BackgroundTransparency = 1
+			desc.Font = Enum.Font.GothamMedium
+			desc.Text = plat.buffDesc
+			desc.TextColor3 = Color3.new(1, 1, 1)
+			desc.TextSize = 11
+			desc.Parent = bb
+		end
+		for _k, _v in TACTICAL_PLATFORMS do
+			_callback_1(_v, _k - 1, TACTICAL_PLATFORMS)
+		end
+		-- ▲ ReadonlyArray.forEach ▲
 	end
 	_container.buildArenaEnvironment = buildArenaEnvironment
 end

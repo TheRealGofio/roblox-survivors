@@ -1,4 +1,5 @@
 import { Lighting, Workspace } from "@rbxts/services";
+import { TACTICAL_PLATFORMS } from "shared/platforms";
 
 export namespace EnvironmentManager {
 	export function setupAtmosphere() {
@@ -135,5 +136,82 @@ export namespace EnvironmentManager {
 			baseplate.Color = new Color3(0.1, 0.12, 0.16); // Asfalto espacial profundo
 			baseplate.Material = Enum.Material.DiamondPlate; // Textura metálica futurista
 		}
+
+		// 4. Plataformas Tácticas Holográficas (Zonas de Buff)
+		const platformsFolder = new Instance("Folder");
+		platformsFolder.Name = "TacticalPlatforms";
+		platformsFolder.Parent = mapFolder;
+
+		TACTICAL_PLATFORMS.forEach((plat) => {
+			// Disco del suelo holográfico
+			const disk = new Instance("Part");
+			disk.Name = plat.id;
+			disk.Shape = Enum.PartType.Cylinder;
+			disk.Size = new Vector3(0.4, plat.radius * 2, plat.radius * 2);
+			disk.CFrame = new CFrame(plat.position).mul(CFrame.Angles(0, 0, math.rad(90)));
+			disk.Material = Enum.Material.Neon;
+			disk.Color = plat.color;
+			disk.Transparency = 0.45;
+			disk.CanCollide = false;
+			disk.Anchored = true;
+			disk.SetAttribute("BuffType", plat.buffType);
+			disk.SetAttribute("Radius", plat.radius);
+			disk.Parent = platformsFolder;
+
+			// Luz ambiental en el santuario
+			const light = new Instance("PointLight");
+			light.Color = plat.color;
+			light.Range = plat.radius + 6;
+			light.Brightness = 2.5;
+			light.Parent = disk;
+
+			// Pilar central rúnico
+			const pillar = new Instance("Part");
+			pillar.Name = `${plat.id}_Pillar`;
+			pillar.Size = new Vector3(2.5, 7, 2.5);
+			pillar.Position = plat.position.add(new Vector3(0, 3.5, 0));
+			pillar.Material = Enum.Material.Slate;
+			pillar.Color = new Color3(0.15, 0.18, 0.22);
+			pillar.CanCollide = true;
+			pillar.Anchored = true;
+			pillar.Parent = platformsFolder;
+
+			const rune = new Instance("Part");
+			rune.Name = "RuneCore";
+			rune.Size = new Vector3(1.4, 3.5, 1.4);
+			rune.Position = pillar.Position;
+			rune.Material = Enum.Material.Neon;
+			rune.Color = plat.color;
+			rune.CanCollide = false;
+			rune.Anchored = true;
+			rune.Parent = platformsFolder;
+
+			// Rótulo 3D flotante
+			const bb = new Instance("BillboardGui");
+			bb.Size = new UDim2(0, 160, 0, 45);
+			bb.StudsOffset = new Vector3(0, 5.5, 0);
+			bb.AlwaysOnTop = true;
+			bb.Adornee = pillar;
+			bb.Parent = pillar;
+
+			const title = new Instance("TextLabel");
+			title.Size = new UDim2(1, 0, 0.5, 0);
+			title.BackgroundTransparency = 1;
+			title.Font = Enum.Font.FredokaOne;
+			title.Text = plat.title;
+			title.TextColor3 = plat.color;
+			title.TextSize = 15;
+			title.Parent = bb;
+
+			const desc = new Instance("TextLabel");
+			desc.Size = new UDim2(1, 0, 0.5, 0);
+			desc.Position = new UDim2(0, 0, 0.5, 0);
+			desc.BackgroundTransparency = 1;
+			desc.Font = Enum.Font.GothamMedium;
+			desc.Text = plat.buffDesc;
+			desc.TextColor3 = new Color3(1, 1, 1);
+			desc.TextSize = 11;
+			desc.Parent = bb;
+		});
 	}
 }

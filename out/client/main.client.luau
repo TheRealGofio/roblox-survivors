@@ -7,6 +7,7 @@ local RunService = _services.RunService
 local TweenService = _services.TweenService
 local UserInputService = _services.UserInputService
 local Workspace = _services.Workspace
+local TACTICAL_PLATFORMS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "platforms").TACTICAL_PLATFORMS
 local WEAPONS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "weapons").WEAPONS
 local VisualEffects = TS.import(script, script.Parent, "effects").VisualEffects
 local SoundManager = TS.import(script, script.Parent, "sound").SoundManager
@@ -17,6 +18,9 @@ local isClientPaused = false
 local isGameOver = false
 local startTime = os.clock()
 local enemiesDefeatedCount = 0
+-- Estado de Buff activo por Plataformas Tácticas
+local activePlatformBuff = nil
+local currentBastionIndex = -1
 -- Sistema de Dash Táctico (Espacio / Shift)
 local DASH_COOLDOWN = 2.8
 local lastDashTime = -DASH_COOLDOWN
@@ -125,6 +129,71 @@ zwText.Parent = zaWarudoIndicator
 -- Cooldown de Za Warudo (40 segundos)
 local ZA_WARUDO_COOLDOWN = 40.0
 local lastZaWarudoTime = -ZA_WARUDO_COOLDOWN
+-- Indicador de Buff Activo en HUD
+local buffBadge = Instance.new("TextLabel")
+buffBadge.Name = "BuffBadge"
+buffBadge.Size = UDim2.new(0, 240, 0, 26)
+buffBadge.Position = UDim2.new(0.5, -120, 0.83, 0)
+buffBadge.BackgroundColor3 = Color3.new(0.1, 0.12, 0.16)
+buffBadge.BackgroundTransparency = 0.2
+buffBadge.Font = Enum.Font.FredokaOne
+buffBadge.Text = ""
+buffBadge.TextColor3 = Color3.new(1, 1, 1)
+buffBadge.TextSize = 13
+buffBadge.Visible = false
+buffBadge.Parent = hudScreen
+local bbCorner = Instance.new("UICorner")
+bbCorner.CornerRadius = UDim.new(0, 6)
+bbCorner.Parent = buffBadge
+-- Loop de chequeo de presencia en Plataformas Tácticas
+task.spawn(function()
+	local lastHealTick = 0
+	while true do
+		task.wait(0.2)
+		if isGameOver or isClientPaused then
+			continue
+		end
+		local char = player.Character
+		local _result = char
+		if _result ~= nil then
+			_result = _result:FindFirstChild("HumanoidRootPart")
+		end
+		local hrp = _result
+		local _hum = char
+		if _hum ~= nil then
+			_hum = _hum:FindFirstChildOfClass("Humanoid")
+		end
+		local hum = _hum
+		if not hrp or not hum or hum.Health <= 0 then
+			continue
+		end
+		local foundPlat = nil
+		for _, plat in TACTICAL_PLATFORMS do
+			local dist = Vector2.new(hrp.Position.X - plat.position.X, hrp.Position.Z - plat.position.Z).Magnitude
+			if dist <= plat.radius then
+				foundPlat = plat
+				break
+			end
+		end
+		if foundPlat then
+			activePlatformBuff = foundPlat.buffType
+			buffBadge.Text = `⚡ {foundPlat.buffName} ({foundPlat.buffDesc})`
+			buffBadge.TextColor3 = foundPlat.color
+			buffBadge.Visible = true
+			-- Efecto de Curación Continua en Bastión Norte
+			if foundPlat.buffType == "heal" then
+				local now = os.clock()
+				if now - lastHealTick >= 1.0 then
+					lastHealTick = now
+					hum.Health = math.min(hum.MaxHealth, hum.Health + 8)
+				end
+			end
+		else
+			activePlatformBuff = nil
+			buffBadge.Visible = false
+		end
+	end
+end)
 task.spawn(function()
 	while true do
 		task.wait(0.1)
@@ -428,6 +497,9 @@ local debugCategories = { {
 		id = "spawn_magnet",
 		label = "🧲 Spawn Imán",
 	}, {
+		id = "tp_bastion",
+		label = "🏛️ TP Bastión",
+	}, {
 		id = "kill_all_enemies",
 		label = "💥 Limpiar Arena",
 	} },
@@ -469,6 +541,22 @@ local _callback = function(cat)
 		bCorner.CornerRadius = UDim.new(0, 5)
 		bCorner.Parent = b
 		b.MouseButton1Click:Connect(function()
+			if btnInfo.id == "tp_bastion" then
+				-- Teletransportar al jugador rotativamente a cada una de las 3 plataformas tácticas
+				local _result = player.Character
+				if _result ~= nil then
+					_result = _result:FindFirstChild("HumanoidRootPart")
+				end
+				local hrp = _result
+				if hrp and #TACTICAL_PLATFORMS > 0 then
+					currentBastionIndex = (currentBastionIndex + 1) % #TACTICAL_PLATFORMS
+					local targetPlat = TACTICAL_PLATFORMS[currentBastionIndex + 1]
+					local _position = targetPlat.position
+					local _vector3 = Vector3.new(0, 3, 0)
+					hrp.CFrame = CFrame.new(_position + _vector3)
+				end
+				return nil
+			end
 			if not debugActionEvent then
 				local net = Workspace:FindFirstChild("Network")
 				if net then
@@ -1036,7 +1124,8 @@ task.spawn(function()
 		end
 		local boomerangLvl = _condition
 		local boomerangDef = WEAPONS.void_boomerang.levels[math.min(boomerangLvl, #WEAPONS.void_boomerang.levels)]
-		task.wait(boomerangDef.cooldown)
+		local cdMultiplier = if activePlatformBuff == "cooldown" then 0.6 else 1.0
+		task.wait(boomerangDef.cooldown * cdMultiplier)
 		if isClientPaused or isGameOver then
 			continue
 		end
@@ -1075,6 +1164,8 @@ task.spawn(function()
 			end
 		end
 		if targetPos then
+			local dmgMultiplier = if activePlatformBuff == "damage" then 1.5 else 1.0
+			local finalDamage = math.floor(boomerangDef.damage * dmgMultiplier)
 			local count = boomerangDef.projectiles
 			do
 				local i = 0
@@ -1089,7 +1180,7 @@ task.spawn(function()
 						break
 					end
 					local angleOffset = if count > 1 then (if i == 0 then -0.2 else 0.2) else 0
-					fireBoomerang(rootPart.Position, targetPos, boomerangDef.damage, boomerangDef.speed, angleOffset)
+					fireBoomerang(rootPart.Position, targetPos, finalDamage, boomerangDef.speed, angleOffset)
 				end
 			end
 		end
@@ -1254,7 +1345,8 @@ task.spawn(function()
 			continue
 		end
 		local plasmaDef = WEAPONS.plasma_blaster.levels[math.min(plasmaLvl, #WEAPONS.plasma_blaster.levels)]
-		task.wait(plasmaDef.cooldown)
+		local cdMultiplier = if activePlatformBuff == "cooldown" then 0.6 else 1.0
+		task.wait(plasmaDef.cooldown * cdMultiplier)
 		if isClientPaused or isGameOver then
 			continue
 		end
@@ -1293,7 +1385,9 @@ task.spawn(function()
 			end
 		end
 		if targetEnemy then
-			firePlasmaOrb(rootPart.Position, targetEnemy, plasmaDef.damage, plasmaDef.speed)
+			local dmgMultiplier = if activePlatformBuff == "damage" then 1.5 else 1.0
+			local finalDamage = math.floor(plasmaDef.damage * dmgMultiplier)
+			firePlasmaOrb(rootPart.Position, targetEnemy, finalDamage, plasmaDef.speed)
 		end
 	end
 end)
@@ -1471,14 +1565,16 @@ RunService.Heartbeat:Connect(function(dt)
 									damageEvent = net:FindFirstChild("DamageEnemy")
 								end
 							end
+							local dmgMultiplier = if activePlatformBuff == "damage" then 1.5 else 1.0
+							local finalOrbDmg = math.floor(orbitDef.damage * dmgMultiplier)
 							local _position_3 = enemy.Position
 							local _position_4 = hrp.Position
 							local knockbackDir = (_position_3 - _position_4).Unit
 							local _result_3 = damageEvent
 							if _result_3 ~= nil then
-								_result_3:FireServer(enemy, orbitDef.damage, knockbackDir)
+								_result_3:FireServer(enemy, finalOrbDmg, knockbackDir)
 							end
-							VisualEffects.showDamagePopup(enemy.Position, orbitDef.damage, true)
+							VisualEffects.showDamagePopup(enemy.Position, finalOrbDmg, true)
 							local origColor = enemy.Color
 							enemy.Color = Color3.new(1, 1, 1)
 							task.delay(0.08, function()
@@ -1491,7 +1587,7 @@ RunService.Heartbeat:Connect(function(dt)
 								_condition_3 = 0
 							end
 							local enemyHp = _condition_3
-							if enemyHp - orbitDef.damage <= 0 then
+							if enemyHp - finalOrbDmg <= 0 then
 								enemiesDefeatedCount += 1
 							end
 						end
@@ -1532,7 +1628,8 @@ task.spawn(function()
 			continue
 		end
 		local novaDef = WEAPONS.nova_beam.levels[math.min(novaLvl, #WEAPONS.nova_beam.levels)]
-		task.wait(novaDef.cooldown)
+		local cdMultiplier = if activePlatformBuff == "cooldown" then 0.6 else 1.0
+		task.wait(novaDef.cooldown * cdMultiplier)
 		if isClientPaused or isGameOver then
 			continue
 		end
@@ -1572,15 +1669,16 @@ task.spawn(function()
 			end
 		end
 		if targetPos then
+			local dmgMultiplier = if activePlatformBuff == "damage" then 1.5 else 1.0
+			local finalDamage = math.floor(novaDef.damage * dmgMultiplier)
 			local _exp = hrp.Position
 			local _exp_1 = targetPos
-			local _exp_2 = novaDef.damage
-			local _exp_3 = novaDef.range
+			local _exp_2 = novaDef.range
 			local _condition_1 = novaDef.duration
 			if _condition_1 == nil then
 				_condition_1 = 0.5
 			end
-			fireNovaBeam(_exp, _exp_1, _exp_2, _exp_3, _condition_1, novaDef.area)
+			fireNovaBeam(_exp, _exp_1, finalDamage, _exp_2, _condition_1, novaDef.area)
 		end
 	end
 end)
