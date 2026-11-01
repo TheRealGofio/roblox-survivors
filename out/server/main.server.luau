@@ -236,6 +236,10 @@ Players.PlayerAdded:Connect(function(plr)
 	plasmaLvl.Name = "plasma_blaster"
 	plasmaLvl.Value = 0
 	plasmaLvl.Parent = inventory
+	local orbitsLvl = Instance.new("IntValue")
+	orbitsLvl.Name = "chrono_orbits"
+	orbitsLvl.Value = 0
+	orbitsLvl.Parent = inventory
 	local maxHpBonus = Instance.new("NumberValue")
 	maxHpBonus.Name = "max_hp_bonus"
 	maxHpBonus.Value = 0
@@ -261,6 +265,12 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 			if val then
 				val.Value += 1
 				print(`[Upgrade] {player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel {val.Value}`)
+			end
+		elseif upgradeId == "chrono_orbits" then
+			local val = inventory:FindFirstChild("chrono_orbits")
+			if val then
+				val.Value += 1
+				print(`[Upgrade] {player.Name} mejoró/desbloqueó Órbitas Crono a Nivel {val.Value}`)
 			end
 		elseif upgradeId == "speed_boost" then
 			local val = inventory:FindFirstChild("speed_bonus")

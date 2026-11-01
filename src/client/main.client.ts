@@ -279,10 +279,65 @@ restartBtn.MouseButton1Click.Connect(() => {
 	}
 });
 
-// Detectar muerte del jugador para mostrar Game Over
+// Detectar muerte del jugador para mostrar Game Over y barra de salud
 function connectDeathListener(character: Model) {
 	const hum = character.WaitForChild("Humanoid", 5) as Humanoid;
-	if (hum) {
+	const hrp = character.WaitForChild("HumanoidRootPart", 5) as BasePart;
+
+	// Barra de salud dinámica flotante sobre la cabeza
+	if (hum && hrp) {
+		const existingHpGui = hrp.FindFirstChild("HealthBillboard");
+		if (existingHpGui) existingHpGui.Destroy();
+
+		const hpBillboard = new Instance("BillboardGui");
+		hpBillboard.Name = "HealthBillboard";
+		hpBillboard.Size = new UDim2(0, 90, 0, 12);
+		hpBillboard.StudsOffset = new Vector3(0, 3.2, 0);
+		hpBillboard.AlwaysOnTop = true;
+		hpBillboard.Adornee = hrp;
+		hpBillboard.Parent = hrp;
+
+		const bg = new Instance("Frame");
+		bg.Size = new UDim2(1, 0, 1, 0);
+		bg.BackgroundColor3 = new Color3(0.08, 0.1, 0.12);
+		bg.BorderSizePixel = 0;
+		bg.Parent = hpBillboard;
+
+		const bgCorner = new Instance("UICorner");
+		bgCorner.CornerRadius = new UDim(0, 4);
+		bgCorner.Parent = bg;
+
+		const fill = new Instance("Frame");
+		fill.Name = "Fill";
+		fill.Size = new UDim2(1, 0, 1, 0);
+		fill.BackgroundColor3 = new Color3(0.15, 0.85, 0.4); // Verde vida
+		fill.BorderSizePixel = 0;
+		fill.Parent = bg;
+
+		const fillCorner = new Instance("UICorner");
+		fillCorner.CornerRadius = new UDim(0, 4);
+		fillCorner.Parent = fill;
+
+		const updateHp = () => {
+			const ratio = math.clamp(hum.Health / hum.MaxHealth, 0, 1);
+			TweenService.Create(fill, new TweenInfo(0.15), {
+				Size: new UDim2(ratio, 0, 1, 0),
+			}).Play();
+
+			// Color dinámico según salud
+			if (ratio > 0.5) {
+				fill.BackgroundColor3 = new Color3(0.15, 0.85, 0.4);
+			} else if (ratio > 0.25) {
+				fill.BackgroundColor3 = new Color3(0.95, 0.7, 0.1); // Amarillo peligro
+			} else {
+				fill.BackgroundColor3 = new Color3(0.95, 0.2, 0.25); // Rojo crítico
+			}
+		};
+
+		hum.HealthChanged.Connect(updateHp);
+		hum.GetPropertyChangedSignal("MaxHealth").Connect(updateHp);
+		updateHp();
+
 		hum.Died.Connect(() => {
 			if (isGameOver) return;
 			isGameOver = true;
@@ -366,14 +421,17 @@ function showLevelUpModal() {
 	const inventory = player.FindFirstChild("Inventory") as Folder;
 	const boomerangLvl = (inventory?.FindFirstChild("void_boomerang") as IntValue)?.Value ?? 1;
 	const plasmaLvl = (inventory?.FindFirstChild("plasma_blaster") as IntValue)?.Value ?? 0;
+	const orbitsLvl = (inventory?.FindFirstChild("chrono_orbits") as IntValue)?.Value ?? 0;
 
-	const options = [
+	// Opciones disponibles para elegir
+	const allOptions = [
 		{
 			id: "void_boomerang",
 			title: "Búmeran del Vacío",
 			tag: boomerangLvl < 3 ? `Nivel ${boomerangLvl + 1}` : "Nivel MÁX",
 			desc: boomerangLvl === 1 ? "+50% daño y mayor velocidad" : "Dispara 2 búmeranes con -20% cooldown",
 			color: new Color3(0.08, 0.45, 0.4),
+			available: boomerangLvl < 3,
 		},
 		{
 			id: "plasma_blaster",
@@ -381,6 +439,15 @@ function showLevelUpModal() {
 			tag: plasmaLvl === 0 ? "DESBLOQUEAR" : `Nivel ${plasmaLvl + 1}`,
 			desc: plasmaLvl === 0 ? "Ráfagas teledirigidas de alta cadencia" : "Dispara 2 esferas de plasma a la vez",
 			color: new Color3(0.45, 0.15, 0.5),
+			available: plasmaLvl < 2,
+		},
+		{
+			id: "chrono_orbits",
+			title: orbitsLvl === 0 ? "Nueva: Órbitas Crono" : "Órbitas Crono",
+			tag: orbitsLvl === 0 ? "DESBLOQUEAR" : `Nivel ${orbitsLvl + 1}`,
+			desc: orbitsLvl === 0 ? "Orbes cinéticos que te orbitan triturando la horda" : "+1 orbe orbital y mayor velocidad de giro",
+			color: new Color3(0.85, 0.65, 0.1), // Dorado radiante
+			available: orbitsLvl < 3,
 		},
 		{
 			id: "speed_boost",
@@ -388,8 +455,16 @@ function showLevelUpModal() {
 			tag: "PASIVA",
 			desc: "+18% velocidad de movimiento permanente",
 			color: new Color3(0.15, 0.35, 0.55),
+			available: true,
 		},
 	];
+
+	// Filtrar y tomar hasta 3 opciones
+	const filtered = allOptions.filter((opt) => opt.available);
+	const options = [];
+	for (let i = 0; i < math.min(3, filtered.size()); i++) {
+		options.push(filtered[i]);
+	}
 
 	for (const opt of options) {
 		const card = new Instance("TextButton");
@@ -755,7 +830,107 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 	Debris.AddItem(orb, 2.5);
 }
 
-// 9. Loop de recolección/imantación de gemas hacia el jugador
+// 9. Armas: Órbitas Crono (Escudo cinético rotatorio)
+let currentOrbInstances: Part[] = [];
+let currentOrbAngle = 0;
+const hitOrbCooldowns = new Map<Instance, number>();
+
+RunService.Heartbeat.Connect((dt) => {
+	if (isClientPaused || isGameOver) return;
+
+	const inventory = player.FindFirstChild("Inventory") as Folder;
+	const orbitsLvl = (inventory?.FindFirstChild("chrono_orbits") as IntValue)?.Value ?? 0;
+
+	if (orbitsLvl <= 0) {
+		if (currentOrbInstances.size() > 0) {
+			currentOrbInstances.forEach((o) => o.Destroy());
+			currentOrbInstances = [];
+		}
+		return;
+	}
+
+	const char = player.Character;
+	const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+	if (!hrp) return;
+
+	const orbitDef = WEAPONS.chrono_orbits.levels[math.min(orbitsLvl, WEAPONS.chrono_orbits.levels.size()) - 1];
+	const orbCount = orbitDef.projectiles;
+	const radius = orbitDef.range;
+	const rotateSpeed = orbitDef.speed;
+
+	// Sincronizar número de orbes instanciados
+	while (currentOrbInstances.size() < orbCount) {
+		const orb = new Instance("Part");
+		orb.Name = "ChronoOrb";
+		orb.Shape = Enum.PartType.Ball;
+		orb.Size = new Vector3(1.6, 1.6, 1.6);
+		orb.Color = new Color3(1.0, 0.8, 0.1); // Oro radiante
+		orb.Material = Enum.Material.Neon;
+		orb.CanCollide = false;
+		orb.Anchored = true;
+		orb.Parent = Workspace;
+
+		const light = new Instance("PointLight");
+		light.Color = orb.Color;
+		light.Range = 8;
+		light.Brightness = 2;
+		light.Parent = orb;
+
+		currentOrbInstances.push(orb);
+	}
+
+	currentOrbAngle += rotateSpeed * dt;
+
+	// Actualizar posición de cada orbe y chequear colisiones
+	const enemiesFolder = Workspace.FindFirstChild("Enemies") as Folder;
+	const now = os.clock();
+
+	currentOrbInstances.forEach((orb, i) => {
+		const angleOffset = (i / orbCount) * math.pi * 2;
+		const totalAngle = currentOrbAngle + angleOffset;
+		const targetOrbPos = hrp.Position.add(
+			new Vector3(math.cos(totalAngle) * radius, math.sin(currentOrbAngle * 2 + i) * 0.4, math.sin(totalAngle) * radius),
+		);
+		orb.Position = targetOrbPos;
+
+		// Detección de colisión con enemigos
+		if (enemiesFolder) {
+			for (const enemy of enemiesFolder.GetChildren()) {
+				if (enemy.IsA("BasePart") && (enemy.GetAttribute("HP") as number ?? 0) > 0) {
+					const dist = orb.Position.sub(enemy.Position).Magnitude;
+					if (dist <= 2.8) {
+						const lastHit = hitOrbCooldowns.get(enemy) ?? 0;
+						if (now - lastHit >= 0.3) {
+							hitOrbCooldowns.set(enemy, now);
+
+							if (!damageEvent) {
+								const net = Workspace.FindFirstChild("Network") as Folder;
+								if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
+							}
+
+							const knockbackDir = enemy.Position.sub(hrp.Position).Unit;
+							damageEvent?.FireServer(enemy, orbitDef.damage, knockbackDir);
+							VisualEffects.showDamagePopup(enemy.Position, orbitDef.damage, true);
+
+							const origColor = enemy.Color;
+							enemy.Color = new Color3(1, 1, 1);
+							task.delay(0.08, () => {
+								if (enemy && enemy.Parent) enemy.Color = origColor;
+							});
+
+							const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
+							if (enemyHp - orbitDef.damage <= 0) {
+								enemiesDefeatedCount++;
+							}
+						}
+					}
+				}
+			}
+		}
+	});
+});
+
+// 10. Loop de recolección/imantación de gemas hacia el jugador
 RunService.Heartbeat.Connect((dt) => {
 	if (isClientPaused || isGameOver) return;
 

@@ -239,6 +239,11 @@ Players.PlayerAdded.Connect((plr) => {
 	plasmaLvl.Value = 0;
 	plasmaLvl.Parent = inventory;
 
+	const orbitsLvl = new Instance("IntValue");
+	orbitsLvl.Name = "chrono_orbits";
+	orbitsLvl.Value = 0; // Desbloqueable en Level Up
+	orbitsLvl.Parent = inventory;
+
 	const maxHpBonus = new Instance("NumberValue");
 	maxHpBonus.Name = "max_hp_bonus";
 	maxHpBonus.Value = 0;
@@ -266,6 +271,12 @@ selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 			if (val) {
 				val.Value += 1;
 				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Bláster de Plasma a Nivel ${val.Value}`);
+			}
+		} else if (upgradeId === "chrono_orbits") {
+			const val = inventory.FindFirstChild("chrono_orbits") as IntValue;
+			if (val) {
+				val.Value += 1;
+				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Órbitas Crono a Nivel ${val.Value}`);
 			}
 		} else if (upgradeId === "speed_boost") {
 			const val = inventory.FindFirstChild("speed_bonus") as NumberValue;

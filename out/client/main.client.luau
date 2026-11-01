@@ -277,10 +277,57 @@ restartBtn.MouseButton1Click:Connect(function()
 		hrp.CFrame = CFrame.new(0, 3, 0)
 	end
 end)
--- Detectar muerte del jugador para mostrar Game Over
+-- Detectar muerte del jugador para mostrar Game Over y barra de salud
 local function connectDeathListener(character)
 	local hum = character:WaitForChild("Humanoid", 5)
-	if hum then
+	local hrp = character:WaitForChild("HumanoidRootPart", 5)
+	-- Barra de salud dinámica flotante sobre la cabeza
+	if hum and hrp then
+		local existingHpGui = hrp:FindFirstChild("HealthBillboard")
+		if existingHpGui then
+			existingHpGui:Destroy()
+		end
+		local hpBillboard = Instance.new("BillboardGui")
+		hpBillboard.Name = "HealthBillboard"
+		hpBillboard.Size = UDim2.new(0, 90, 0, 12)
+		hpBillboard.StudsOffset = Vector3.new(0, 3.2, 0)
+		hpBillboard.AlwaysOnTop = true
+		hpBillboard.Adornee = hrp
+		hpBillboard.Parent = hrp
+		local bg = Instance.new("Frame")
+		bg.Size = UDim2.new(1, 0, 1, 0)
+		bg.BackgroundColor3 = Color3.new(0.08, 0.1, 0.12)
+		bg.BorderSizePixel = 0
+		bg.Parent = hpBillboard
+		local bgCorner = Instance.new("UICorner")
+		bgCorner.CornerRadius = UDim.new(0, 4)
+		bgCorner.Parent = bg
+		local fill = Instance.new("Frame")
+		fill.Name = "Fill"
+		fill.Size = UDim2.new(1, 0, 1, 0)
+		fill.BackgroundColor3 = Color3.new(0.15, 0.85, 0.4)
+		fill.BorderSizePixel = 0
+		fill.Parent = bg
+		local fillCorner = Instance.new("UICorner")
+		fillCorner.CornerRadius = UDim.new(0, 4)
+		fillCorner.Parent = fill
+		local updateHp = function()
+			local ratio = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+			TweenService:Create(fill, TweenInfo.new(0.15), {
+				Size = UDim2.new(ratio, 0, 1, 0),
+			}):Play()
+			-- Color dinámico según salud
+			if ratio > 0.5 then
+				fill.BackgroundColor3 = Color3.new(0.15, 0.85, 0.4)
+			elseif ratio > 0.25 then
+				fill.BackgroundColor3 = Color3.new(0.95, 0.7, 0.1)
+			else
+				fill.BackgroundColor3 = Color3.new(0.95, 0.2, 0.25)
+			end
+		end
+		hum.HealthChanged:Connect(updateHp)
+		hum:GetPropertyChangedSignal("MaxHealth"):Connect(updateHp)
+		updateHp()
 		hum.Died:Connect(function()
 			if isGameOver then
 				return nil
@@ -395,25 +442,81 @@ local function showLevelUpModal()
 		_condition_1 = 0
 	end
 	local plasmaLvl = _condition_1
-	local options = { {
+	local _result_4 = inventory
+	if _result_4 ~= nil then
+		_result_4 = _result_4:FindFirstChild("chrono_orbits")
+	end
+	local _result_5 = _result_4
+	if _result_5 ~= nil then
+		_result_5 = _result_5.Value
+	end
+	local _condition_2 = _result_5
+	if _condition_2 == nil then
+		_condition_2 = 0
+	end
+	local orbitsLvl = _condition_2
+	-- Opciones disponibles para elegir
+	local allOptions = { {
 		id = "void_boomerang",
 		title = "Búmeran del Vacío",
 		tag = if boomerangLvl < 3 then `Nivel {boomerangLvl + 1}` else "Nivel MÁX",
 		desc = if boomerangLvl == 1 then "+50% daño y mayor velocidad" else "Dispara 2 búmeranes con -20% cooldown",
 		color = Color3.new(0.08, 0.45, 0.4),
+		available = boomerangLvl < 3,
 	}, {
 		id = "plasma_blaster",
 		title = if plasmaLvl == 0 then "Nueva Arma: Bláster" else "Bláster de Plasma",
 		tag = if plasmaLvl == 0 then "DESBLOQUEAR" else `Nivel {plasmaLvl + 1}`,
 		desc = if plasmaLvl == 0 then "Ráfagas teledirigidas de alta cadencia" else "Dispara 2 esferas de plasma a la vez",
 		color = Color3.new(0.45, 0.15, 0.5),
+		available = plasmaLvl < 2,
+	}, {
+		id = "chrono_orbits",
+		title = if orbitsLvl == 0 then "Nueva: Órbitas Crono" else "Órbitas Crono",
+		tag = if orbitsLvl == 0 then "DESBLOQUEAR" else `Nivel {orbitsLvl + 1}`,
+		desc = if orbitsLvl == 0 then "Orbes cinéticos que te orbitan triturando la horda" else "+1 orbe orbital y mayor velocidad de giro",
+		color = Color3.new(0.85, 0.65, 0.1),
+		available = orbitsLvl < 3,
 	}, {
 		id = "speed_boost",
 		title = "Propulsores de Pies",
 		tag = "PASIVA",
 		desc = "+18% velocidad de movimiento permanente",
 		color = Color3.new(0.15, 0.35, 0.55),
+		available = true,
 	} }
+	-- Filtrar y tomar hasta 3 opciones
+	-- ▼ ReadonlyArray.filter ▼
+	local _newValue = {}
+	local _callback = function(opt)
+		return opt.available
+	end
+	local _length = 0
+	for _k, _v in allOptions do
+		if _callback(_v, _k - 1, allOptions) == true then
+			_length += 1
+			_newValue[_length] = _v
+		end
+	end
+	-- ▲ ReadonlyArray.filter ▲
+	local filtered = _newValue
+	local options = {}
+	do
+		local i = 0
+		local _shouldIncrement = false
+		while true do
+			if _shouldIncrement then
+				i += 1
+			else
+				_shouldIncrement = true
+			end
+			if not (i < math.min(3, #filtered)) then
+				break
+			end
+			local _arg0 = filtered[i + 1]
+			table.insert(options, _arg0)
+		end
+	end
 	for _, opt in options do
 		local card = Instance.new("TextButton")
 		card.Size = UDim2.new(0, 210, 0, 230)
@@ -478,9 +581,9 @@ local function showLevelUpModal()
 					selectUpgradeEvent = net:FindFirstChild("SelectUpgrade")
 				end
 			end
-			local _result_4 = selectUpgradeEvent
-			if _result_4 ~= nil then
-				_result_4:FireServer(opt.id)
+			local _result_6 = selectUpgradeEvent
+			if _result_6 ~= nil then
+				_result_6:FireServer(opt.id)
 			end
 			levelUpGui.Enabled = false
 			isClientPaused = false
@@ -894,7 +997,149 @@ function firePlasmaOrb(startPos, targetEnemy, damage, speed)
 	end)
 	Debris:AddItem(orb, 2.5)
 end
--- 9. Loop de recolección/imantación de gemas hacia el jugador
+-- 9. Armas: Órbitas Crono (Escudo cinético rotatorio)
+local currentOrbInstances = {}
+local currentOrbAngle = 0
+local hitOrbCooldowns = {}
+RunService.Heartbeat:Connect(function(dt)
+	if isClientPaused or isGameOver then
+		return nil
+	end
+	local inventory = player:FindFirstChild("Inventory")
+	local _result = inventory
+	if _result ~= nil then
+		_result = _result:FindFirstChild("chrono_orbits")
+	end
+	local _result_1 = _result
+	if _result_1 ~= nil then
+		_result_1 = _result_1.Value
+	end
+	local _condition = _result_1
+	if _condition == nil then
+		_condition = 0
+	end
+	local orbitsLvl = _condition
+	if orbitsLvl <= 0 then
+		if #currentOrbInstances > 0 then
+			-- ▼ ReadonlyArray.forEach ▼
+			local _callback = function(o)
+				return o:Destroy()
+			end
+			for _k, _v in currentOrbInstances do
+				_callback(_v, _k - 1, currentOrbInstances)
+			end
+			-- ▲ ReadonlyArray.forEach ▲
+			currentOrbInstances = {}
+		end
+		return nil
+	end
+	local char = player.Character
+	local _result_2 = char
+	if _result_2 ~= nil then
+		_result_2 = _result_2:FindFirstChild("HumanoidRootPart")
+	end
+	local hrp = _result_2
+	if not hrp then
+		return nil
+	end
+	local orbitDef = WEAPONS.chrono_orbits.levels[math.min(orbitsLvl, #WEAPONS.chrono_orbits.levels)]
+	local orbCount = orbitDef.projectiles
+	local radius = orbitDef.range
+	local rotateSpeed = orbitDef.speed
+	-- Sincronizar número de orbes instanciados
+	while #currentOrbInstances < orbCount do
+		local orb = Instance.new("Part")
+		orb.Name = "ChronoOrb"
+		orb.Shape = Enum.PartType.Ball
+		orb.Size = Vector3.new(1.6, 1.6, 1.6)
+		orb.Color = Color3.new(1.0, 0.8, 0.1)
+		orb.Material = Enum.Material.Neon
+		orb.CanCollide = false
+		orb.Anchored = true
+		orb.Parent = Workspace
+		local light = Instance.new("PointLight")
+		light.Color = orb.Color
+		light.Range = 8
+		light.Brightness = 2
+		light.Parent = orb
+		table.insert(currentOrbInstances, orb)
+	end
+	currentOrbAngle += rotateSpeed * dt
+	-- Actualizar posición de cada orbe y chequear colisiones
+	local enemiesFolder = Workspace:FindFirstChild("Enemies")
+	local now = os.clock()
+	-- ▼ ReadonlyArray.forEach ▼
+	local _callback = function(orb, i)
+		local angleOffset = (i / orbCount) * math.pi * 2
+		local totalAngle = currentOrbAngle + angleOffset
+		local _position = hrp.Position
+		local _vector3 = Vector3.new(math.cos(totalAngle) * radius, math.sin(currentOrbAngle * 2 + i) * 0.4, math.sin(totalAngle) * radius)
+		local targetOrbPos = _position + _vector3
+		orb.Position = targetOrbPos
+		-- Detección de colisión con enemigos
+		if enemiesFolder then
+			for _, enemy in enemiesFolder:GetChildren() do
+				local _condition_1 = enemy:IsA("BasePart")
+				if _condition_1 then
+					local _condition_2 = enemy:GetAttribute("HP")
+					if _condition_2 == nil then
+						_condition_2 = 0
+					end
+					_condition_1 = _condition_2 > 0
+				end
+				if _condition_1 then
+					local _position_1 = orb.Position
+					local _position_2 = enemy.Position
+					local dist = (_position_1 - _position_2).Magnitude
+					if dist <= 2.8 then
+						local _condition_2 = hitOrbCooldowns[enemy]
+						if _condition_2 == nil then
+							_condition_2 = 0
+						end
+						local lastHit = _condition_2
+						if now - lastHit >= 0.3 then
+							hitOrbCooldowns[enemy] = now
+							if not damageEvent then
+								local net = Workspace:FindFirstChild("Network")
+								if net then
+									damageEvent = net:FindFirstChild("DamageEnemy")
+								end
+							end
+							local _position_3 = enemy.Position
+							local _position_4 = hrp.Position
+							local knockbackDir = (_position_3 - _position_4).Unit
+							local _result_3 = damageEvent
+							if _result_3 ~= nil then
+								_result_3:FireServer(enemy, orbitDef.damage, knockbackDir)
+							end
+							VisualEffects.showDamagePopup(enemy.Position, orbitDef.damage, true)
+							local origColor = enemy.Color
+							enemy.Color = Color3.new(1, 1, 1)
+							task.delay(0.08, function()
+								if enemy and enemy.Parent then
+									enemy.Color = origColor
+								end
+							end)
+							local _condition_3 = (enemy:GetAttribute("HP"))
+							if _condition_3 == nil then
+								_condition_3 = 0
+							end
+							local enemyHp = _condition_3
+							if enemyHp - orbitDef.damage <= 0 then
+								enemiesDefeatedCount += 1
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	for _k, _v in currentOrbInstances do
+		_callback(_v, _k - 1, currentOrbInstances)
+	end
+	-- ▲ ReadonlyArray.forEach ▲
+end)
+-- 10. Loop de recolección/imantación de gemas hacia el jugador
 RunService.Heartbeat:Connect(function(dt)
 	if isClientPaused or isGameOver then
 		return nil
