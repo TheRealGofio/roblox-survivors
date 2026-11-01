@@ -5,6 +5,7 @@ local Debris = _services.Debris
 local Players = _services.Players
 local RunService = _services.RunService
 local TweenService = _services.TweenService
+local UserInputService = _services.UserInputService
 local Workspace = _services.Workspace
 local WEAPONS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "weapons").WEAPONS
 local VisualEffects = TS.import(script, script.Parent, "effects").VisualEffects
@@ -15,6 +16,10 @@ local isClientPaused = false
 local isGameOver = false
 local startTime = os.clock()
 local enemiesDefeatedCount = 0
+-- Sistema de Dash Táctico (Espacio / Shift)
+local DASH_COOLDOWN = 2.8
+local lastDashTime = -DASH_COOLDOWN
+local isDashing = false
 -- 1. HUD de EXP, Nivel y Temporizador
 local hudScreen = Instance.new("ScreenGui")
 hudScreen.Name = "SurvivorHUD"
@@ -62,17 +67,110 @@ timerLabel.TextSize = 22
 timerLabel.TextColor3 = Color3.new(1, 0.9, 0.4)
 timerLabel.TextStrokeTransparency = 0.2
 timerLabel.Parent = hudScreen
+-- Indicador / Cooldown de Dash en HUD
+local dashIndicator = Instance.new("Frame")
+dashIndicator.Name = "DashIndicator"
+dashIndicator.Size = UDim2.new(0, 130, 0, 24)
+dashIndicator.Position = UDim2.new(0.5, -65, 0.88, 0)
+dashIndicator.BackgroundColor3 = Color3.new(0.1, 0.12, 0.18)
+dashIndicator.BorderSizePixel = 0
+dashIndicator.Parent = hudScreen
+local dashCorner = Instance.new("UICorner")
+dashCorner.CornerRadius = UDim.new(0, 6)
+dashCorner.Parent = dashIndicator
+local dashText = Instance.new("TextLabel")
+dashText.Name = "DashText"
+dashText.Size = UDim2.new(1, 0, 1, 0)
+dashText.BackgroundTransparency = 1
+dashText.Font = Enum.Font.FredokaOne
+dashText.Text = "⚡ DASH [L-SHIFT]"
+dashText.TextColor3 = Color3.new(0.2, 0.9, 0.95)
+dashText.TextSize = 13
+dashText.Parent = dashIndicator
 task.spawn(function()
 	while true do
-		task.wait(1.0)
-		if not isGameOver and not isClientPaused then
-			local elapsed = math.floor(os.clock() - startTime)
-			local mins = math.floor(elapsed / 60)
-			local secs = elapsed % 60
-			local minStr = if mins < 10 then `0{mins}` else `{mins}`
-			local secStr = if secs < 10 then `0{secs}` else `{secs}`
-			timerLabel.Text = `{minStr}:{secStr}`
+		task.wait(0.1)
+		local timeSinceDash = os.clock() - lastDashTime
+		if timeSinceDash >= DASH_COOLDOWN then
+			dashText.Text = "⚡ DASH [L-SHIFT]"
+			dashText.TextColor3 = Color3.new(0.2, 0.9, 0.95)
+		else
+			local remaining = string.format("%.1f", math.max(0, DASH_COOLDOWN - timeSinceDash))
+			dashText.Text = `⏳ {remaining}s`
+			dashText.TextColor3 = Color3.new(0.6, 0.6, 0.65)
 		end
+	end
+end)
+-- Función de activación de Dash
+local function triggerDash()
+	if isClientPaused or isGameOver or isDashing then
+		return nil
+	end
+	local now = os.clock()
+	if now - lastDashTime < DASH_COOLDOWN then
+		return nil
+	end
+	local char = player.Character
+	local _result = char
+	if _result ~= nil then
+		_result = _result:FindFirstChild("HumanoidRootPart")
+	end
+	local hrp = _result
+	local _hum = char
+	if _hum ~= nil then
+		_hum = _hum:FindFirstChildOfClass("Humanoid")
+	end
+	local hum = _hum
+	if not hrp or not hum or hum.Health <= 0 then
+		return nil
+	end
+	lastDashTime = now
+	isDashing = true
+	-- Determinar dirección de movimiento (o hacia adelante si está quieto)
+	local moveDir = hum.MoveDirection
+	if moveDir.Magnitude < 0.1 then
+		moveDir = hrp.CFrame.LookVector
+	end
+	moveDir = Vector3.new(moveDir.X, 0, moveDir.Z).Unit
+	-- Impulso físico de Dash (con i-frames)
+	local dashVelocity = Instance.new("BodyVelocity")
+	dashVelocity.MaxForce = Vector3.new(80000, 4000, 80000)
+	dashVelocity.Velocity = moveDir * 65
+	dashVelocity.Parent = hrp
+	-- Efecto visual de Estela / Ghosting Neón
+	for i = 0, 3 do
+		task.delay(i * 0.04, function()
+			if not hrp or not hrp.Parent then
+				return nil
+			end
+			local ghost = Instance.new("Part")
+			ghost.Size = hrp.Size
+			ghost.CFrame = hrp.CFrame
+			ghost.Color = Color3.new(0.1, 0.95, 0.9)
+			ghost.Material = Enum.Material.Neon
+			ghost.Transparency = 0.4
+			ghost.CanCollide = false
+			ghost.Anchored = true
+			ghost.Parent = Workspace
+			TweenService:Create(ghost, TweenInfo.new(0.25), {
+				Transparency = 1,
+				Size = ghost.Size * 1.2,
+			}):Play()
+			Debris:AddItem(ghost, 0.3)
+		end)
+	end
+	task.delay(0.22, function()
+		dashVelocity:Destroy()
+		isDashing = false
+	end)
+end
+-- Escuchar pulsación de Shift izquierdo o Q para Dash
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return nil
+	end
+	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.Q then
+		triggerDash()
 	end
 end)
 -- 2. Obtener referencias de RemoteEvents

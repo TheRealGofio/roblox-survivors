@@ -1,4 +1,4 @@
-import { Debris, Players, RunService, TweenService, Workspace } from "@rbxts/services";
+import { Debris, Players, RunService, TweenService, UserInputService, Workspace } from "@rbxts/services";
 import { WEAPONS } from "shared/weapons";
 import { VisualEffects } from "./effects";
 
@@ -10,6 +10,11 @@ let isClientPaused = false;
 let isGameOver = false;
 let startTime = os.clock();
 let enemiesDefeatedCount = 0;
+
+// Sistema de Dash Táctico (Espacio / Shift)
+const DASH_COOLDOWN = 2.8;
+let lastDashTime = -DASH_COOLDOWN;
+let isDashing = false;
 
 // 1. HUD de EXP, Nivel y Temporizador
 const hudScreen = new Instance("ScreenGui");
@@ -65,20 +70,106 @@ timerLabel.TextColor3 = new Color3(1, 0.9, 0.4); // Amarillo suave
 timerLabel.TextStrokeTransparency = 0.2;
 timerLabel.Parent = hudScreen;
 
+// Indicador / Cooldown de Dash en HUD
+const dashIndicator = new Instance("Frame");
+dashIndicator.Name = "DashIndicator";
+dashIndicator.Size = new UDim2(0, 130, 0, 24);
+dashIndicator.Position = new UDim2(0.5, -65, 0.88, 0);
+dashIndicator.BackgroundColor3 = new Color3(0.1, 0.12, 0.18);
+dashIndicator.BorderSizePixel = 0;
+dashIndicator.Parent = hudScreen;
+
+const dashCorner = new Instance("UICorner");
+dashCorner.CornerRadius = new UDim(0, 6);
+dashCorner.Parent = dashIndicator;
+
+const dashText = new Instance("TextLabel");
+dashText.Name = "DashText";
+dashText.Size = new UDim2(1, 0, 1, 0);
+dashText.BackgroundTransparency = 1;
+dashText.Font = Enum.Font.FredokaOne;
+dashText.Text = "⚡ DASH [L-SHIFT]";
+dashText.TextColor3 = new Color3(0.2, 0.9, 0.95);
+dashText.TextSize = 13;
+dashText.Parent = dashIndicator;
+
 task.spawn(() => {
 	while (true) {
-		task.wait(1.0);
-		if (!isGameOver && !isClientPaused) {
-			const elapsed = math.floor(os.clock() - startTime);
-			const mins = math.floor(elapsed / 60);
-			const secs = elapsed % 60;
-			const minStr = mins < 10 ? `0${mins}` : `${mins}`;
-			const secStr = secs < 10 ? `0${secs}` : `${secs}`;
-			timerLabel.Text = `${minStr}:${secStr}`;
+		task.wait(0.1);
+		const timeSinceDash = os.clock() - lastDashTime;
+		if (timeSinceDash >= DASH_COOLDOWN) {
+			dashText.Text = "⚡ DASH [L-SHIFT]";
+			dashText.TextColor3 = new Color3(0.2, 0.9, 0.95);
+		} else {
+			const remaining = string.format("%.1f", math.max(0, DASH_COOLDOWN - timeSinceDash));
+			dashText.Text = `⏳ ${remaining}s`;
+			dashText.TextColor3 = new Color3(0.6, 0.6, 0.65);
 		}
 	}
 });
 
+// Función de activación de Dash
+function triggerDash() {
+	if (isClientPaused || isGameOver || isDashing) return;
+	const now = os.clock();
+	if (now - lastDashTime < DASH_COOLDOWN) return;
+
+	const char = player.Character;
+	const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+	const hum = char?.FindFirstChildOfClass("Humanoid");
+	if (!hrp || !hum || hum.Health <= 0) return;
+
+	lastDashTime = now;
+	isDashing = true;
+
+	// Determinar dirección de movimiento (o hacia adelante si está quieto)
+	let moveDir = hum.MoveDirection;
+	if (moveDir.Magnitude < 0.1) {
+		moveDir = hrp.CFrame.LookVector;
+	}
+	moveDir = new Vector3(moveDir.X, 0, moveDir.Z).Unit;
+
+	// Impulso físico de Dash (con i-frames)
+	const dashVelocity = new Instance("BodyVelocity");
+	dashVelocity.MaxForce = new Vector3(80000, 4000, 80000);
+	dashVelocity.Velocity = moveDir.mul(65); // Impulso supersónico
+	dashVelocity.Parent = hrp;
+
+	// Efecto visual de Estela / Ghosting Neón
+	for (let i = 0; i < 4; i++) {
+		task.delay(i * 0.04, () => {
+			if (!hrp || !hrp.Parent) return;
+			const ghost = new Instance("Part");
+			ghost.Size = hrp.Size;
+			ghost.CFrame = hrp.CFrame;
+			ghost.Color = new Color3(0.1, 0.95, 0.9);
+			ghost.Material = Enum.Material.Neon;
+			ghost.Transparency = 0.4;
+			ghost.CanCollide = false;
+			ghost.Anchored = true;
+			ghost.Parent = Workspace;
+
+			TweenService.Create(ghost, new TweenInfo(0.25), {
+				Transparency: 1,
+				Size: ghost.Size.mul(1.2),
+			}).Play();
+			Debris.AddItem(ghost, 0.3);
+		});
+	}
+
+	task.delay(0.22, () => {
+		dashVelocity.Destroy();
+		isDashing = false;
+	});
+}
+
+// Escuchar pulsación de Shift izquierdo o Q para Dash
+UserInputService.InputBegan.Connect((input, processed) => {
+	if (processed) return;
+	if (input.KeyCode === Enum.KeyCode.LeftShift || input.KeyCode === Enum.KeyCode.Q) {
+		triggerDash();
+	}
+});
 // 2. Obtener referencias de RemoteEvents
 let networkFolder = Workspace.WaitForChild("Network", 5) as Folder;
 let damageEvent = networkFolder ? (networkFolder.WaitForChild("DamageEnemy", 5) as RemoteEvent) : undefined;
