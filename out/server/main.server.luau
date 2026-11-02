@@ -4,7 +4,6 @@ local _services = TS.import(script, game:GetService("ReplicatedStorage"), "rbxts
 local Debris = _services.Debris
 local PhysicsService = _services.PhysicsService
 local Players = _services.Players
-local ReplicatedStorage = _services.ReplicatedStorage
 local RunService = _services.RunService
 local Workspace = _services.Workspace
 local ENEMY_TYPES = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "enemies").ENEMY_TYPES
@@ -291,8 +290,8 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 			else
 				spawnExpGem(deathPos, xpReward)
 			end
-			-- Dar 1.4 segundos para que el cliente reproduzca la animación completa y el hundimiento suave
-			task.delay(1.4, function()
+			-- Dar 0.5 segundos para que el cliente reproduzca el hundimiento / desintegración y limpiar
+			task.delay(0.5, function()
 				if enemy and enemy.Parent then
 					enemy:Destroy()
 				end
@@ -728,7 +727,156 @@ restartGameEvent.OnServerEvent:Connect(function(player)
 		hrp.CFrame = CFrame.new(0, 3, 0)
 	end
 end)
--- 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Modelos 3D
+-- 10. Función para generar modelos visuales geométricos estilizados (Placeholders cilíndricos de alto rendimiento)
+local function createPlaceholderVisual(enemy, config)
+	local visual = Instance.new("Model")
+	visual.Name = "VisualModel"
+	local isSkimmer = config.id == "skimmer" or config.behavior == "fast"
+	local isShooter = config.behavior == "shooter"
+	local isBoss = config.isBoss == true
+	local isTank = config.behavior == "tank"
+	-- 1. Cuerpo Cilíndrico Principal (Vertical en eje Y)
+	local body = Instance.new("Part")
+	body.Name = "Body"
+	body.Size = Vector3.new(config.size.X, config.size.Y, config.size.X)
+	body.Color = config.color
+	body.Material = Enum.Material.SmoothPlastic
+	body.CanCollide = false
+	body.Anchored = false
+	body.Massless = true
+	body.CFrame = enemy.CFrame
+	body.Parent = visual
+	local mesh = Instance.new("CylinderMesh")
+	mesh.Parent = body
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = enemy
+	weld.Part1 = body
+	weld.Parent = body
+	-- 2. Elementos distintivos y acentos Neón por tipo de enemigo
+	if isBoss then
+		-- Corona / Anillo de Poder de Jefe Cósmico
+		local crown = Instance.new("Part")
+		crown.Name = "BossCrown"
+		crown.Size = Vector3.new(config.size.X * 1.25, 0.7, config.size.X * 1.25)
+		crown.Color = Color3.new(1.0, 0.25, 0.85)
+		crown.Material = Enum.Material.Neon
+		crown.CanCollide = false
+		crown.Anchored = false
+		crown.Massless = true
+		local _cFrame = body.CFrame
+		local _vector3 = Vector3.new(0, config.size.Y * 0.45, 0)
+		crown.CFrame = _cFrame + _vector3
+		crown.Parent = visual
+		local crownMesh = Instance.new("CylinderMesh")
+		crownMesh.Parent = crown
+		local crownWeld = Instance.new("WeldConstraint")
+		crownWeld.Part0 = body
+		crownWeld.Part1 = crown
+		crownWeld.Parent = crown
+		local light = Instance.new("PointLight")
+		light.Color = crown.Color
+		light.Range = 22
+		light.Brightness = 2.5
+		light.Parent = crown
+	elseif isSkimmer then
+		-- Alas Neón de Planeador Rápido Aéreo
+		local wingL = Instance.new("Part")
+		wingL.Name = "WingL"
+		wingL.Size = Vector3.new(1.6, 0.25, 2.0)
+		wingL.Color = Color3.new(1.0, 0.85, 0.15)
+		wingL.Material = Enum.Material.Neon
+		wingL.CanCollide = false
+		wingL.Anchored = false
+		wingL.Massless = true
+		local _cFrame = body.CFrame
+		local _cFrame_1 = CFrame.new(-config.size.X * 0.65, 0, 0)
+		local _arg0 = CFrame.Angles(0, 0, math.rad(-20))
+		wingL.CFrame = _cFrame * _cFrame_1 * _arg0
+		wingL.Parent = visual
+		local weldL = Instance.new("WeldConstraint")
+		weldL.Part0 = body
+		weldL.Part1 = wingL
+		weldL.Parent = wingL
+		local wingR = Instance.new("Part")
+		wingR.Name = "WingR"
+		wingR.Size = Vector3.new(1.6, 0.25, 2.0)
+		wingR.Color = Color3.new(1.0, 0.85, 0.15)
+		wingR.Material = Enum.Material.Neon
+		wingR.CanCollide = false
+		wingR.Anchored = false
+		wingR.Massless = true
+		local _cFrame_2 = body.CFrame
+		local _cFrame_3 = CFrame.new(config.size.X * 0.65, 0, 0)
+		local _arg0_1 = CFrame.Angles(0, 0, math.rad(20))
+		wingR.CFrame = _cFrame_2 * _cFrame_3 * _arg0_1
+		wingR.Parent = visual
+		local weldR = Instance.new("WeldConstraint")
+		weldR.Part0 = body
+		weldR.Part1 = wingR
+		weldR.Parent = wingR
+	elseif isShooter then
+		-- Núcleo / Ojo emisor frontal
+		local eye = Instance.new("Part")
+		eye.Name = "ShooterEye"
+		eye.Size = Vector3.new(0.9, 0.9, 0.9)
+		eye.Color = Color3.new(0.1, 0.95, 1.0)
+		eye.Material = Enum.Material.Neon
+		eye.CanCollide = false
+		eye.Anchored = false
+		eye.Massless = true
+		local _cFrame = body.CFrame
+		local _vector3 = Vector3.new(0, config.size.Y * 0.25, -config.size.X * 0.45)
+		eye.CFrame = _cFrame + _vector3
+		eye.Parent = visual
+		local eyeMesh = Instance.new("SpecialMesh")
+		eyeMesh.MeshType = Enum.MeshType.Sphere
+		eyeMesh.Parent = eye
+		local eyeWeld = Instance.new("WeldConstraint")
+		eyeWeld.Part0 = body
+		eyeWeld.Part1 = eye
+		eyeWeld.Parent = eye
+	elseif isTank then
+		-- Anillo de blindaje reforzado pesado
+		local armor = Instance.new("Part")
+		armor.Name = "ArmorBand"
+		armor.Size = Vector3.new(config.size.X * 1.12, 1.4, config.size.X * 1.12)
+		armor.Color = Color3.new(0.12, 0.16, 0.14)
+		armor.Material = Enum.Material.DiamondPlate
+		armor.CanCollide = false
+		armor.Anchored = false
+		armor.Massless = true
+		armor.CFrame = body.CFrame
+		armor.Parent = visual
+		local armorMesh = Instance.new("CylinderMesh")
+		armorMesh.Parent = armor
+		local armorWeld = Instance.new("WeldConstraint")
+		armorWeld.Part0 = body
+		armorWeld.Part1 = armor
+		armorWeld.Parent = armor
+	else
+		-- Visor frontal agresivo (Crawler)
+		local visor = Instance.new("Part")
+		visor.Name = "Visor"
+		visor.Size = Vector3.new(config.size.X * 0.65, 0.45, 0.45)
+		visor.Color = Color3.new(1.0, 0.25, 0.15)
+		visor.Material = Enum.Material.Neon
+		visor.CanCollide = false
+		visor.Anchored = false
+		visor.Massless = true
+		local _cFrame = body.CFrame
+		local _vector3 = Vector3.new(0, config.size.Y * 0.25, -config.size.X * 0.45)
+		visor.CFrame = _cFrame + _vector3
+		visor.Parent = visual
+		local visorWeld = Instance.new("WeldConstraint")
+		visorWeld.Part0 = body
+		visorWeld.Part1 = visor
+		visorWeld.Parent = visor
+	end
+	visual.PrimaryPart = body
+	visual.Parent = enemy
+	return visual
+end
+-- 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Cilindros Fluidos
 function createEnemyInstance(config, index)
 	local enemy = Instance.new("Part")
 	enemy.Name = `{config.name}_{index}`
@@ -736,58 +884,22 @@ function createEnemyInstance(config, index)
 	enemy.Color = config.color
 	enemy.Material = config.material
 	enemy.Anchored = false
-	enemy.CanCollide = true
-	enemy.CollisionGroup = "Enemies"
-	-- Fricción 0 para deslizamiento ultrasuave sin oscilaciones ni enganchones con el Baseplate
-	enemy.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0, 0, 100, 100)
+	enemy.CanCollide = false
+	enemy.CanTouch = true
+	enemy.CanQuery = true
+	enemy.Transparency = 1
+	enemy.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0, 0, 100, 100)
 	pcall(function()
 		enemy:SetNetworkOwner(nil)
 	end)
 	local angle = math.random() * math.pi * 2
 	local dist = 42 + math.random() * 22
 	local isFlying = config.behavior == "fast" or config.id == "skimmer"
-	local floatY = if isFlying then 1.6 else 0
+	local floatY = if isFlying then 2.5 else 0
 	local spawnY = config.size.Y / 2 + 0.1 + floatY
 	enemy.Position = Vector3.new(math.cos(angle) * dist, spawnY, math.sin(angle) * dist)
-	-- Si existe un Modelo 3D en ReplicatedStorage.EnemyModels, clonarlo e integrarlo visualmente
-	local _value = config.modelName
-	if _value ~= "" and _value then
-		local enemyModelsFolder = ReplicatedStorage:FindFirstChild("EnemyModels")
-		local _result = enemyModelsFolder
-		if _result ~= nil then
-			_result = _result:FindFirstChild(config.modelName)
-		end
-		local templateModel = _result
-		if templateModel then
-			local visualClone = templateModel:Clone()
-			visualClone.Name = "VisualModel"
-			local primary = visualClone.PrimaryPart or (visualClone:FindFirstChildWhichIsA("BasePart", true))
-			if primary then
-				for _, desc in visualClone:GetDescendants() do
-					if desc:IsA("BasePart") then
-						desc.CanCollide = false
-						desc.Anchored = false
-						desc.Massless = true
-					end
-				end
-				-- Alinear pies o base del modelo exactamente con el suelo (o flotación si es aéreo)
-				local bboxCf, bboxSize = visualClone:GetBoundingBox()
-				local pivot = visualClone:GetPivot()
-				local pivotToBottom = pivot.Position.Y - (bboxCf.Position.Y - bboxSize.Y / 2)
-				local yOffset = -config.size.Y / 2 + pivotToBottom + floatY
-				local _cFrame = enemy.CFrame
-				local _cFrame_1 = CFrame.new(0, yOffset, 0)
-				visualClone:PivotTo(_cFrame * _cFrame_1)
-				visualClone.Parent = enemy
-				local rootWeld = Instance.new("WeldConstraint")
-				rootWeld.Part0 = enemy
-				rootWeld.Part1 = primary
-				rootWeld.Parent = enemy
-				-- La parte física actúa como hitbox y collider invisible
-				enemy.Transparency = 1
-			end
-		end
-	end
+	-- Crear modelo visual cilíndrico estilizado de alto rendimiento
+	createPlaceholderVisual(enemy, config)
 	enemy:SetAttribute("HP", config.hp)
 	enemy:SetAttribute("MaxHP", config.hp)
 	enemy:SetAttribute("Speed", config.speed)
@@ -799,14 +911,14 @@ function createEnemyInstance(config, index)
 	enemy:SetAttribute("LastShotTime", 0)
 	enemy.Parent = enemiesFolder
 	local massMultiplier = math.max(1, enemy:GetMass())
-	-- MaxForce.Y alto con Velocity.Y = 0 sostiene al enemigo en suspensión horizontal perfecta sin micro-botes de gravedad
+	-- MaxForce.Y muy alto con Velocity.Y = 0 sostiene al enemigo en levitación horizontal perfecta
 	local bodyVelocity = Instance.new("BodyVelocity")
-	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 10000, massMultiplier * 30000, massMultiplier * 10000)
+	bodyVelocity.MaxForce = Vector3.new(massMultiplier * 25000, massMultiplier * 100000, massMultiplier * 25000)
 	bodyVelocity.Velocity = Vector3.new(0, 0, 0)
 	bodyVelocity.Parent = enemy
-	-- MaxTorque en los 3 ejes garantiza verticalidad total: bloquea cabeceo (pitch) y alabeo (roll) a 0
+	-- MaxTorque en los 3 ejes garantiza verticalidad 100% rígida (cero cabeceo ni alabeo)
 	local bodyGyro = Instance.new("BodyGyro")
-	bodyGyro.MaxTorque = Vector3.new(500000, 500000, 500000)
+	bodyGyro.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
 	bodyGyro.P = 50000
 	bodyGyro.D = 1000
 	bodyGyro.CFrame = enemy.CFrame
@@ -952,6 +1064,42 @@ RunService.Heartbeat:Connect(function()
 			local _position = enemy.Position
 			local dir = _targetPos - _position
 			local dirHorizontal = Vector3.new(dir.X, 0, dir.Z).Unit
+			-- Daño por contacto físico/cercanía directa al jugador
+			local enemyRadius = enemy.Size.X / 2
+			if closestDist <= enemyRadius + 1.8 then
+				local _condition_2 = (enemy:GetAttribute("LastContactDamage"))
+				if _condition_2 == nil then
+					_condition_2 = 0
+				end
+				local lastContact = _condition_2
+				if currentTime - lastContact >= 0.8 then
+					enemy:SetAttribute("LastContactDamage", currentTime)
+					for _1, p in allPlayers do
+						local char = p.Character
+						local _result = char
+						if _result ~= nil then
+							_result = _result:FindFirstChild("HumanoidRootPart")
+						end
+						local hrp = _result
+						local _hum = char
+						if _hum ~= nil then
+							_hum = _hum:FindFirstChildOfClass("Humanoid")
+						end
+						local hum = _hum
+						if hrp and hum and hum.Health > 0 then
+							local _position_1 = hrp.Position
+							local _position_2 = enemy.Position
+							if (_position_1 - _position_2).Magnitude <= enemyRadius + 2.0 then
+								local _condition_3 = (enemy:GetAttribute("Damage"))
+								if _condition_3 == nil then
+									_condition_3 = 10
+								end
+								hum:TakeDamage(_condition_3)
+							end
+						end
+					end
+				end
+			end
 			if behavior == "boss" then
 				-- BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles
 				bodyVel.Velocity = Vector3.new(dirHorizontal.X * baseSpeed, 0, dirHorizontal.Z * baseSpeed)

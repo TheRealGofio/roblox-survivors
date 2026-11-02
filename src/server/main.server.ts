@@ -295,8 +295,8 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 				spawnExpGem(deathPos, xpReward);
 			}
 
-			// Dar 1.4 segundos para que el cliente reproduzca la animación completa y el hundimiento suave
-			task.delay(1.4, () => {
+			// Dar 0.5 segundos para que el cliente reproduzca el hundimiento / desintegración y limpiar
+			task.delay(0.5, () => {
 				if (enemy && enemy.Parent) {
 					enemy.Destroy();
 				}
@@ -656,7 +656,162 @@ restartGameEvent.OnServerEvent.Connect((player) => {
 	}
 });
 
-// 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Modelos 3D
+// 10. Función para generar modelos visuales geométricos estilizados (Placeholders cilíndricos de alto rendimiento)
+function createPlaceholderVisual(enemy: BasePart, config: EnemyTypeConfig): Model {
+	const visual = new Instance("Model");
+	visual.Name = "VisualModel";
+
+	const isSkimmer = config.id === "skimmer" || config.behavior === "fast";
+	const isShooter = config.behavior === "shooter";
+	const isBoss = config.isBoss === true;
+	const isTank = config.behavior === "tank";
+
+	// 1. Cuerpo Cilíndrico Principal (Vertical en eje Y)
+	const body = new Instance("Part");
+	body.Name = "Body";
+	body.Size = new Vector3(config.size.X, config.size.Y, config.size.X);
+	body.Color = config.color;
+	body.Material = Enum.Material.SmoothPlastic;
+	body.CanCollide = false;
+	body.Anchored = false;
+	body.Massless = true;
+	body.CFrame = enemy.CFrame;
+	body.Parent = visual;
+
+	const mesh = new Instance("CylinderMesh");
+	mesh.Parent = body;
+
+	const weld = new Instance("WeldConstraint");
+	weld.Part0 = enemy;
+	weld.Part1 = body;
+	weld.Parent = body;
+
+	// 2. Elementos distintivos y acentos Neón por tipo de enemigo
+	if (isBoss) {
+		// Corona / Anillo de Poder de Jefe Cósmico
+		const crown = new Instance("Part");
+		crown.Name = "BossCrown";
+		crown.Size = new Vector3(config.size.X * 1.25, 0.7, config.size.X * 1.25);
+		crown.Color = new Color3(1.0, 0.25, 0.85); // Magenta Neón vibrante
+		crown.Material = Enum.Material.Neon;
+		crown.CanCollide = false;
+		crown.Anchored = false;
+		crown.Massless = true;
+		crown.CFrame = body.CFrame.add(new Vector3(0, config.size.Y * 0.45, 0));
+		crown.Parent = visual;
+
+		const crownMesh = new Instance("CylinderMesh");
+		crownMesh.Parent = crown;
+
+		const crownWeld = new Instance("WeldConstraint");
+		crownWeld.Part0 = body;
+		crownWeld.Part1 = crown;
+		crownWeld.Parent = crown;
+
+		const light = new Instance("PointLight");
+		light.Color = crown.Color;
+		light.Range = 22;
+		light.Brightness = 2.5;
+		light.Parent = crown;
+	} else if (isSkimmer) {
+		// Alas Neón de Planeador Rápido Aéreo
+		const wingL = new Instance("Part");
+		wingL.Name = "WingL";
+		wingL.Size = new Vector3(1.6, 0.25, 2.0);
+		wingL.Color = new Color3(1.0, 0.85, 0.15); // Amarillo / Dorado neón
+		wingL.Material = Enum.Material.Neon;
+		wingL.CanCollide = false;
+		wingL.Anchored = false;
+		wingL.Massless = true;
+		wingL.CFrame = body.CFrame.mul(new CFrame(-config.size.X * 0.65, 0, 0)).mul(CFrame.Angles(0, 0, math.rad(-20)));
+		wingL.Parent = visual;
+
+		const weldL = new Instance("WeldConstraint");
+		weldL.Part0 = body;
+		weldL.Part1 = wingL;
+		weldL.Parent = wingL;
+
+		const wingR = new Instance("Part");
+		wingR.Name = "WingR";
+		wingR.Size = new Vector3(1.6, 0.25, 2.0);
+		wingR.Color = new Color3(1.0, 0.85, 0.15);
+		wingR.Material = Enum.Material.Neon;
+		wingR.CanCollide = false;
+		wingR.Anchored = false;
+		wingR.Massless = true;
+		wingR.CFrame = body.CFrame.mul(new CFrame(config.size.X * 0.65, 0, 0)).mul(CFrame.Angles(0, 0, math.rad(20)));
+		wingR.Parent = visual;
+
+		const weldR = new Instance("WeldConstraint");
+		weldR.Part0 = body;
+		weldR.Part1 = wingR;
+		weldR.Parent = wingR;
+	} else if (isShooter) {
+		// Núcleo / Ojo emisor frontal
+		const eye = new Instance("Part");
+		eye.Name = "ShooterEye";
+		eye.Size = new Vector3(0.9, 0.9, 0.9);
+		eye.Color = new Color3(0.1, 0.95, 1.0); // Turquesa eléctrico
+		eye.Material = Enum.Material.Neon;
+		eye.CanCollide = false;
+		eye.Anchored = false;
+		eye.Massless = true;
+		eye.CFrame = body.CFrame.add(new Vector3(0, config.size.Y * 0.25, -config.size.X * 0.45));
+		eye.Parent = visual;
+
+		const eyeMesh = new Instance("SpecialMesh");
+		eyeMesh.MeshType = Enum.MeshType.Sphere;
+		eyeMesh.Parent = eye;
+
+		const eyeWeld = new Instance("WeldConstraint");
+		eyeWeld.Part0 = body;
+		eyeWeld.Part1 = eye;
+		eyeWeld.Parent = eye;
+	} else if (isTank) {
+		// Anillo de blindaje reforzado pesado
+		const armor = new Instance("Part");
+		armor.Name = "ArmorBand";
+		armor.Size = new Vector3(config.size.X * 1.12, 1.4, config.size.X * 1.12);
+		armor.Color = new Color3(0.12, 0.16, 0.14); // Metal oscuro blindado
+		armor.Material = Enum.Material.DiamondPlate;
+		armor.CanCollide = false;
+		armor.Anchored = false;
+		armor.Massless = true;
+		armor.CFrame = body.CFrame;
+		armor.Parent = visual;
+
+		const armorMesh = new Instance("CylinderMesh");
+		armorMesh.Parent = armor;
+
+		const armorWeld = new Instance("WeldConstraint");
+		armorWeld.Part0 = body;
+		armorWeld.Part1 = armor;
+		armorWeld.Parent = armor;
+	} else {
+		// Visor frontal agresivo (Crawler)
+		const visor = new Instance("Part");
+		visor.Name = "Visor";
+		visor.Size = new Vector3(config.size.X * 0.65, 0.45, 0.45);
+		visor.Color = new Color3(1.0, 0.25, 0.15); // Rojo neón brillante
+		visor.Material = Enum.Material.Neon;
+		visor.CanCollide = false;
+		visor.Anchored = false;
+		visor.Massless = true;
+		visor.CFrame = body.CFrame.add(new Vector3(0, config.size.Y * 0.25, -config.size.X * 0.45));
+		visor.Parent = visual;
+
+		const visorWeld = new Instance("WeldConstraint");
+		visorWeld.Part0 = body;
+		visorWeld.Part1 = visor;
+		visorWeld.Parent = visor;
+	}
+
+	visual.PrimaryPart = body;
+	visual.Parent = enemy;
+	return visual;
+}
+
+// 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Cilindros Fluidos
 function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	const enemy = new Instance("Part");
 	enemy.Name = `${config.name}_${index}`;
@@ -664,58 +819,24 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.Color = config.color;
 	enemy.Material = config.material;
 	enemy.Anchored = false;
-	enemy.CanCollide = true;
-	enemy.CollisionGroup = "Enemies"; // No colisiona con otros enemigos, pero sí con suelo/paredes
-	// Fricción 0 para deslizamiento ultrasuave sin oscilaciones ni enganchones con el Baseplate
-	enemy.CustomPhysicalProperties = new PhysicalProperties(0.7, 0, 0, 100, 100);
+	enemy.CanCollide = false; // Sin colisión física con el suelo ni con otros enemigos: cero rozamientos
+	enemy.CanTouch = true;
+	enemy.CanQuery = true;
+	enemy.Transparency = 1; // Hitbox invisible
+	enemy.CustomPhysicalProperties = new PhysicalProperties(0.01, 0, 0, 100, 100);
 	pcall(() => {
-		enemy.SetNetworkOwner(undefined); // Control físico exclusivo del servidor para evitar jitter
+		enemy.SetNetworkOwner(undefined); // Control exclusivo del servidor
 	});
 
 	const angle = math.random() * math.pi * 2;
 	const dist = 42 + math.random() * 22;
 	const isFlying = config.behavior === "fast" || config.id === "skimmer";
-	const floatY = isFlying ? 1.6 : 0;
+	const floatY = isFlying ? 2.5 : 0;
 	const spawnY = config.size.Y / 2 + 0.1 + floatY;
 	enemy.Position = new Vector3(math.cos(angle) * dist, spawnY, math.sin(angle) * dist);
 
-	// Si existe un Modelo 3D en ReplicatedStorage.EnemyModels, clonarlo e integrarlo visualmente
-	if (config.modelName) {
-		const enemyModelsFolder = ReplicatedStorage.FindFirstChild("EnemyModels") as Folder;
-		const templateModel = enemyModelsFolder?.FindFirstChild(config.modelName) as Model;
-		if (templateModel) {
-			const visualClone = templateModel.Clone();
-			visualClone.Name = "VisualModel";
-
-			const primary = visualClone.PrimaryPart ?? (visualClone.FindFirstChildWhichIsA("BasePart", true) as BasePart);
-			if (primary) {
-				for (const desc of visualClone.GetDescendants()) {
-					if (desc.IsA("BasePart")) {
-						desc.CanCollide = false;
-						desc.Anchored = false;
-						desc.Massless = true;
-					}
-				}
-
-				// Alinear pies o base del modelo exactamente con el suelo (o flotación si es aéreo)
-				const [bboxCf, bboxSize] = visualClone.GetBoundingBox();
-				const pivot = visualClone.GetPivot();
-				const pivotToBottom = pivot.Position.Y - (bboxCf.Position.Y - bboxSize.Y / 2);
-				const yOffset = -config.size.Y / 2 + pivotToBottom + floatY;
-
-				visualClone.PivotTo(enemy.CFrame.mul(new CFrame(0, yOffset, 0)));
-				visualClone.Parent = enemy;
-
-				const rootWeld = new Instance("WeldConstraint");
-				rootWeld.Part0 = enemy;
-				rootWeld.Part1 = primary;
-				rootWeld.Parent = enemy;
-
-				// La parte física actúa como hitbox y collider invisible
-				enemy.Transparency = 1;
-			}
-		}
-	}
+	// Crear modelo visual cilíndrico estilizado de alto rendimiento
+	createPlaceholderVisual(enemy, config);
 
 	enemy.SetAttribute("HP", config.hp);
 	enemy.SetAttribute("MaxHP", config.hp);
@@ -730,15 +851,15 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 
 	const massMultiplier = math.max(1, enemy.GetMass());
 
-	// MaxForce.Y alto con Velocity.Y = 0 sostiene al enemigo en suspensión horizontal perfecta sin micro-botes de gravedad
+	// MaxForce.Y muy alto con Velocity.Y = 0 sostiene al enemigo en levitación horizontal perfecta
 	const bodyVelocity = new Instance("BodyVelocity");
-	bodyVelocity.MaxForce = new Vector3(massMultiplier * 10000, massMultiplier * 30000, massMultiplier * 10000);
+	bodyVelocity.MaxForce = new Vector3(massMultiplier * 25000, massMultiplier * 100000, massMultiplier * 25000);
 	bodyVelocity.Velocity = new Vector3(0, 0, 0);
 	bodyVelocity.Parent = enemy;
 
-	// MaxTorque en los 3 ejes garantiza verticalidad total: bloquea cabeceo (pitch) y alabeo (roll) a 0
+	// MaxTorque en los 3 ejes garantiza verticalidad 100% rígida (cero cabeceo ni alabeo)
 	const bodyGyro = new Instance("BodyGyro");
-	bodyGyro.MaxTorque = new Vector3(500000, 500000, 500000);
+	bodyGyro.MaxTorque = new Vector3(1e6, 1e6, 1e6);
 	bodyGyro.P = 50000;
 	bodyGyro.D = 1000;
 	bodyGyro.CFrame = enemy.CFrame;
@@ -857,6 +978,25 @@ RunService.Heartbeat.Connect(() => {
 		if (targetPos) {
 			const dir = targetPos.sub(enemy.Position);
 			const dirHorizontal = new Vector3(dir.X, 0, dir.Z).Unit;
+
+			// Daño por contacto físico/cercanía directa al jugador
+			const enemyRadius = enemy.Size.X / 2;
+			if (closestDist <= enemyRadius + 1.8) {
+				const lastContact = (enemy.GetAttribute("LastContactDamage") as number) ?? 0;
+				if (currentTime - lastContact >= 0.8) {
+					enemy.SetAttribute("LastContactDamage", currentTime);
+					for (const p of allPlayers) {
+						const char = p.Character;
+						const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+						const hum = char?.FindFirstChildOfClass("Humanoid");
+						if (hrp && hum && hum.Health > 0) {
+							if (hrp.Position.sub(enemy.Position).Magnitude <= enemyRadius + 2.0) {
+								hum.TakeDamage((enemy.GetAttribute("Damage") as number) ?? 10);
+							}
+						}
+					}
+				}
+			}
 
 			if (behavior === "boss") {
 				// BOSS: Marcha imparable hacia el jugador + ráfaga de 3 proyectiles

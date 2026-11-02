@@ -988,178 +988,77 @@ task.spawn(() => {
 	}
 });
 
-// 6.5 Gestor de Animaciones Oficiales de Enemigos en el Cliente (Run, Walk, Idle, Death)
-function setupEnemyAnimations(enemy: Instance) {
+// 6.5 Gestor de Efectos Visuales y Muerte de Enemigos en el Cliente (Placeholders fluidos a 60 FPS)
+function setupEnemyVisuals(enemy: Instance) {
 	if (!enemy.IsA("BasePart")) return;
-	if (enemy.GetAttribute("AnimSetupDone")) return;
-	enemy.SetAttribute("AnimSetupDone", true);
+	if (enemy.GetAttribute("VisualSetupDone")) return;
+	enemy.SetAttribute("VisualSetupDone", true);
 
-	task.spawn(() => {
-		const visualModel = enemy.WaitForChild("VisualModel", 5) as Model | undefined;
-		if (!visualModel) return;
+	let isDead = false;
 
-		const animController =
-			visualModel.FindFirstChildOfClass("AnimationController") ?? visualModel.FindFirstChildOfClass("Humanoid");
-		if (!animController) return;
+	const onDeath = () => {
+		if (isDead) return;
+		isDead = true;
 
-		let animator = animController.FindFirstChildOfClass("Animator");
-		if (!animator) {
-			animator = new Instance("Animator");
-			animator.Parent = animController;
-		}
-
-		const animObjs = visualModel.WaitForChild("AnimationObjects", 3) as Folder | undefined;
-		if (!animObjs) return;
-
-		const loadTrack = (name: string, priority: Enum.AnimationPriority, looped = true) => {
-			const anim = animObjs.FindFirstChild(name) as Animation | undefined;
-			if (!anim) return undefined;
-			const track = animator.LoadAnimation(anim);
-			track.Priority = priority;
-			track.Looped = looped;
-			return track;
-		};
-
-		// Mapeo exacto de g-survivors2 para animaciones (Walk, Run, Idle, Death)
-		const isAlpaking = visualModel.Name === "Alpaking" || (enemy.Name.find("skimmer")[0] !== undefined);
-
-		const walkTrack = isAlpaking
-			? (loadTrack("Flying_Idle", Enum.AnimationPriority.Movement) ?? loadTrack("Fast_Flying", Enum.AnimationPriority.Movement))
-			: (loadTrack("Walk", Enum.AnimationPriority.Movement) ?? loadTrack("Run", Enum.AnimationPriority.Movement));
-
-		const runTrack = isAlpaking
-			? loadTrack("Fast_Flying", Enum.AnimationPriority.Movement)
-			: loadTrack("Run", Enum.AnimationPriority.Movement);
-
-		const idleTrack = isAlpaking
-			? walkTrack
-			: (loadTrack("Idle", Enum.AnimationPriority.Idle) ?? walkTrack);
-
-		const deathTrack = loadTrack("Death", Enum.AnimationPriority.Action, false);
-
-		let currentTrack: AnimationTrack | undefined = undefined;
-		let isDead = false;
-
-		// Arrancar con animación de marcha
-		if (walkTrack) {
-			walkTrack.Play(0.1);
-			currentTrack = walkTrack;
-		}
-
-		// Loop de sincronización y cadencia de animación basado en velocidad real (idéntico a g-survivors2)
-		const baseSpeed = (enemy.GetAttribute("Speed") as number) ?? 8.0;
-		let lastPos = enemy.Position;
-
-		const heartbeatConn = RunService.Heartbeat.Connect((dt) => {
-			if (isDead || !enemy.Parent || !visualModel.Parent) return;
-
-			// Calcular velocidad física horizontal instantánea del motor
-			const physVel = enemy.AssemblyLinearVelocity;
-			const physSpeed = math.sqrt(physVel.X * physVel.X + physVel.Z * physVel.Z);
-			const effectiveSpeed = physSpeed > 0.15 ? physSpeed : 0;
-
-			const isMoving = effectiveSpeed > 0.35;
-			const isHighSpeed = effectiveSpeed > (baseSpeed * 1.15);
-
-			let targetTrack: AnimationTrack | undefined = undefined;
-			let targetSpeed = 1.0;
-
-			if (runTrack && isHighSpeed) {
-				targetTrack = runTrack;
-				targetSpeed = math.clamp(effectiveSpeed / baseSpeed, 0.85, 1.8);
-			} else if (isMoving && walkTrack) {
-				targetTrack = walkTrack;
-				targetSpeed = math.clamp(effectiveSpeed / baseSpeed, 0.75, 1.8);
-			} else {
-				targetTrack = idleTrack ?? walkTrack;
-				targetSpeed = 1.0;
-			}
-
-			if (targetTrack && currentTrack !== targetTrack) {
-				targetTrack.Play(0.2);
-				if (currentTrack && currentTrack !== targetTrack) {
-					currentTrack.Stop(0.2);
-				}
-				currentTrack = targetTrack;
-			}
-
-			if (currentTrack) {
-				currentTrack.AdjustSpeed(targetSpeed);
-			}
-		});
-
-		// 3. Manejo de muerte suave: animación de muerte + hundimiento y desvanecimiento (idéntico a g-survivors2)
-		const onDeath = () => {
-			if (isDead) return;
-			isDead = true;
-			heartbeatConn.Disconnect();
-
-			if (currentTrack) {
-				currentTrack.Stop(0.1);
-			}
-
-			if (deathTrack) {
-				deathTrack.Play(0.1);
-			}
-
-			// Quitar hit-flash highlight si estuviera activo
+		const visualModel = enemy.FindFirstChild("VisualModel") as Model | undefined;
+		if (visualModel) {
+			// Quitar highlight de hit flash si estuviera activo
 			const hl = visualModel.FindFirstChild("HitFlashHighlight");
 			if (hl) hl.Destroy();
 
-			// Secuencia de hundimiento gradual (tras 0.55s de animación, se hunde 1.8 studs y se vuelve transparente en 0.45s)
-			task.delay(0.55, () => {
-				if (!visualModel.Parent) return;
-				const startCf = visualModel.GetPivot();
-				const targetCf = startCf.sub(new Vector3(0, 1.8, 0));
-				const startTime = os.clock();
-				const duration = 0.45;
+			// Efecto de desintegración y hundimiento suave estilo arcade
+			const startCf = visualModel.GetPivot();
+			const targetCf = startCf.sub(new Vector3(0, 2.0, 0));
+			const duration = 0.35;
+			const startTime = os.clock();
 
-				const meshParts: BasePart[] = [];
-				for (const d of visualModel.GetDescendants()) {
-					if (d.IsA("BasePart")) meshParts.push(d);
+			const meshParts: BasePart[] = [];
+			for (const d of visualModel.GetDescendants()) {
+				if (d.IsA("BasePart")) meshParts.push(d);
+			}
+
+			const conn = RunService.RenderStepped.Connect(() => {
+				const elapsed = os.clock() - startTime;
+				const progress = math.clamp(elapsed / duration, 0, 1);
+				visualModel.PivotTo(startCf.Lerp(targetCf, progress));
+
+				// Reducción suave de escala y desvanecimiento
+				const scaleFactor = math.max(0.05, 1 - progress);
+				pcall(() => visualModel.ScaleTo(scaleFactor));
+
+				for (const p of meshParts) {
+					p.Transparency = progress;
 				}
 
-				const sinkConn = RunService.RenderStepped.Connect(() => {
-					const elapsed = os.clock() - startTime;
-					const progress = math.clamp(elapsed / duration, 0, 1);
-					visualModel.PivotTo(startCf.Lerp(targetCf, progress));
-
-					for (const p of meshParts) {
-						p.Transparency = progress;
-					}
-
-					if (progress >= 1) {
-						sinkConn.Disconnect();
-						visualModel.Destroy();
-					}
-				});
+				if (progress >= 1) {
+					conn.Disconnect();
+					visualModel.Destroy();
+				}
 			});
-		};
+		}
+	};
 
-		const hpConn = enemy.GetAttributeChangedSignal("HP").Connect(() => {
-			const hp = (enemy.GetAttribute("HP") as number) ?? 0;
-			if (hp <= 0) onDeath();
-		});
+	const hpConn = enemy.GetAttributeChangedSignal("HP").Connect(() => {
+		const hp = (enemy.GetAttribute("HP") as number) ?? 0;
+		if (hp <= 0) onDeath();
+	});
 
-		const deadConn = enemy.GetAttributeChangedSignal("IsDead").Connect(() => {
-			if (enemy.GetAttribute("IsDead") === true) onDeath();
-		});
+	const deadConn = enemy.GetAttributeChangedSignal("IsDead").Connect(() => {
+		if (enemy.GetAttribute("IsDead") === true) onDeath();
+	});
 
-		enemy.Destroying.Connect(() => {
-			isDead = true;
-			heartbeatConn.Disconnect();
-			hpConn.Disconnect();
-			deadConn.Disconnect();
-			if (currentTrack) currentTrack.Stop(0);
-		});
+	enemy.Destroying.Connect(() => {
+		isDead = true;
+		hpConn.Disconnect();
+		deadConn.Disconnect();
 	});
 }
 
 task.spawn(() => {
 	const enemiesFolder = Workspace.WaitForChild("Enemies", 10) as Folder;
 	if (enemiesFolder) {
-		enemiesFolder.GetChildren().forEach(setupEnemyAnimations);
-		enemiesFolder.ChildAdded.Connect(setupEnemyAnimations);
+		enemiesFolder.GetChildren().forEach(setupEnemyVisuals);
+		enemiesFolder.ChildAdded.Connect(setupEnemyVisuals);
 	}
 });
 
