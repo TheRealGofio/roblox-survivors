@@ -86,6 +86,130 @@ task.spawn(function()
 		end
 	end
 end)
+-- Barra de Salud de Jefe Colosal en el HUD (Top Center, debajo del reloj)
+local bossFrame = Instance.new("Frame")
+bossFrame.Name = "BossHealthFrame"
+bossFrame.Size = UDim2.new(0, 360, 0, 44)
+bossFrame.Position = UDim2.new(0.5, -180, 0.088, 0)
+bossFrame.BackgroundColor3 = Color3.new(0.08, 0.05, 0.12)
+bossFrame.BackgroundTransparency = 0.2
+bossFrame.BorderSizePixel = 0
+bossFrame.Visible = false
+bossFrame.Parent = hudScreen
+local bfCorner = Instance.new("UICorner")
+bfCorner.CornerRadius = UDim.new(0, 8)
+bfCorner.Parent = bossFrame
+local bfStroke = Instance.new("UIStroke")
+bfStroke.Color = Color3.new(0.95, 0.2, 0.35)
+bfStroke.Thickness = 1.5
+bfStroke.Parent = bossFrame
+local bossTopRow = Instance.new("Frame")
+bossTopRow.Size = UDim2.new(1, -16, 0, 18)
+bossTopRow.Position = UDim2.new(0, 8, 0, 4)
+bossTopRow.BackgroundTransparency = 1
+bossTopRow.Parent = bossFrame
+local bossNameLabel = Instance.new("TextLabel")
+bossNameLabel.Name = "BossName"
+bossNameLabel.Size = UDim2.new(0.7, 0, 1, 0)
+bossNameLabel.BackgroundTransparency = 1
+bossNameLabel.Font = Enum.Font.FredokaOne
+bossNameLabel.Text = "👑 COLOSO DE OBSIDIANA"
+bossNameLabel.TextColor3 = Color3.new(1, 0.85, 0.4)
+bossNameLabel.TextSize = 13
+bossNameLabel.TextXAlignment = Enum.TextXAlignment.Left
+bossNameLabel.Parent = bossTopRow
+local bossHpLabel = Instance.new("TextLabel")
+bossHpLabel.Name = "BossHpText"
+bossHpLabel.Size = UDim2.new(0.3, 0, 1, 0)
+bossHpLabel.Position = UDim2.new(0.7, 0, 0, 0)
+bossHpLabel.BackgroundTransparency = 1
+bossHpLabel.Font = Enum.Font.FredokaOne
+bossHpLabel.Text = "100%"
+bossHpLabel.TextColor3 = Color3.new(1, 0.3, 0.4)
+bossHpLabel.TextSize = 12
+bossHpLabel.TextXAlignment = Enum.TextXAlignment.Right
+bossHpLabel.Parent = bossTopRow
+local bossBarBg = Instance.new("Frame")
+bossBarBg.Name = "BossBarBg"
+bossBarBg.Size = UDim2.new(1, -16, 0, 12)
+bossBarBg.Position = UDim2.new(0, 8, 0, 24)
+bossBarBg.BackgroundColor3 = Color3.new(0.2, 0.05, 0.08)
+bossBarBg.BorderSizePixel = 0
+bossBarBg.Parent = bossFrame
+local bbgCorner = Instance.new("UICorner")
+bbgCorner.CornerRadius = UDim.new(0, 4)
+bbgCorner.Parent = bossBarBg
+local bossBarFill = Instance.new("Frame")
+bossBarFill.Name = "BossBarFill"
+bossBarFill.Size = UDim2.new(1, 0, 1, 0)
+bossBarFill.BackgroundColor3 = Color3.new(0.95, 0.2, 0.3)
+bossBarFill.BorderSizePixel = 0
+bossBarFill.Parent = bossBarBg
+local bfillCorner = Instance.new("UICorner")
+bfillCorner.CornerRadius = UDim.new(0, 4)
+bfillCorner.Parent = bossBarFill
+local bossGradient = Instance.new("UIGradient")
+bossGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.new(0.75, 0.1, 0.3)), ColorSequenceKeypoint.new(0.5, Color3.new(0.95, 0.25, 0.35)), ColorSequenceKeypoint.new(1, Color3.new(1.0, 0.6, 0.3)) })
+bossGradient.Parent = bossBarFill
+-- Loop reactivo de actualización de la barra de salud del jefe
+task.spawn(function()
+	while true do
+		task.wait(0.1)
+		if isGameOver then
+			bossFrame.Visible = false
+			continue
+		end
+		local enemiesFolder = Workspace:FindFirstChild("Enemies")
+		local activeBoss = nil
+		if enemiesFolder then
+			for _, enemy in enemiesFolder:GetChildren() do
+				if enemy:IsA("BasePart") then
+					local isBoss = enemy:GetAttribute("IsBoss") == true or enemy:GetAttribute("Behavior") == "boss"
+					local _condition = (enemy:GetAttribute("HP"))
+					if _condition == nil then
+						_condition = 0
+					end
+					local hp = _condition
+					if isBoss and hp > 0 then
+						activeBoss = enemy
+						break
+					end
+				end
+			end
+		end
+		if activeBoss then
+			local _condition = (activeBoss:GetAttribute("HP"))
+			if _condition == nil then
+				_condition = 0
+			end
+			local hp = math.max(0, _condition)
+			local _condition_1 = (activeBoss:GetAttribute("MaxHP"))
+			if _condition_1 == nil then
+				_condition_1 = 100
+			end
+			local maxHp = math.max(1, _condition_1)
+			local _condition_2 = (activeBoss:GetAttribute("EnemyName"))
+			if _condition_2 == nil then
+				_condition_2 = activeBoss.Name
+			end
+			local rawName = _condition_2
+			local bossName = (string.gsub(rawName, "_%d+", ""))
+			bossNameLabel.Text = `👑 {string.upper(bossName)}`
+			local pct = math.clamp(hp / maxHp, 0, 1)
+			bossHpLabel.Text = `{math.floor(hp)} / {maxHp} ({math.floor(pct * 100)}%)`
+			TweenService:Create(bossBarFill, TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size = UDim2.new(pct, 0, 1, 0),
+			}):Play()
+			if not bossFrame.Visible then
+				bossFrame.Visible = true
+			end
+		else
+			if bossFrame.Visible then
+				bossFrame.Visible = false
+			end
+		end
+	end
+end)
 -- Indicador / Cooldown de Dash en HUD
 local dashIndicator = Instance.new("Frame")
 dashIndicator.Name = "DashIndicator"
@@ -428,8 +552,8 @@ dbCorner.CornerRadius = UDim.new(0, 6)
 dbCorner.Parent = debugToggleBtn
 local debugPanel = Instance.new("Frame")
 debugPanel.Name = "DebugPanel"
-debugPanel.Size = UDim2.new(0, 480, 0, 260)
-debugPanel.Position = UDim2.new(0.98, -480, 0.065, 0)
+debugPanel.Size = UDim2.new(0, 520, 0, 310)
+debugPanel.Position = UDim2.new(0.98, -520, 0.065, 0)
 debugPanel.BackgroundColor3 = Color3.new(0.08, 0.1, 0.14)
 debugPanel.BorderSizePixel = 0
 debugPanel.Visible = false
@@ -445,7 +569,7 @@ local columnsContainer = Instance.new("Frame")
 columnsContainer.Size = UDim2.new(1, -16, 1, -16)
 columnsContainer.Position = UDim2.new(0, 8, 0, 8)
 columnsContainer.BackgroundTransparency = 1
-columnsContainer.Parent = debugPanel
+columnsContainer.Parent = if columnsContainer then debugPanel else debugPanel
 local columnsLayout = Instance.new("UIListLayout")
 columnsLayout.FillDirection = Enum.FillDirection.Horizontal
 columnsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -467,6 +591,12 @@ local debugCategories = { {
 	}, {
 		id = "give_plasma",
 		label = "🟣 Bláster Plasma",
+	}, {
+		id = "give_flare",
+		label = "💥 Fulgor Éter",
+	}, {
+		id = "give_mines",
+		label = "💣 Minas Vórtice",
 	} },
 }, {
 	title = "✨ PASIVAS & STATS",
@@ -483,6 +613,12 @@ local debugCategories = { {
 	}, {
 		id = "give_speed",
 		label = "👟 +6 Velocidad",
+	}, {
+		id = "give_magnet",
+		label = "🧲 +8 Imán EXP",
+	}, {
+		id = "give_area",
+		label = "📏 +25% Área",
 	} },
 }, {
 	title = "🌍 ENTORNO / SPAWNS",
@@ -516,26 +652,26 @@ local _callback = function(cat)
 	cCorner.Parent = col
 	local cLayout = Instance.new("UIListLayout")
 	cLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	cLayout.Padding = UDim.new(0, 6)
+	cLayout.Padding = UDim.new(0, 4)
 	cLayout.Parent = col
 	local header = Instance.new("TextLabel")
-	header.Size = UDim2.new(1, 0, 0, 26)
+	header.Size = UDim2.new(1, 0, 0, 24)
 	header.BackgroundTransparency = 1
 	header.Font = Enum.Font.FredokaOne
 	header.Text = cat.title
 	header.TextColor3 = cat.headerColor
-	header.TextSize = 13
+	header.TextSize = 12
 	header.Parent = col
 	local _exp = cat.buttons
 	-- ▼ ReadonlyArray.forEach ▼
 	local _callback_1 = function(btnInfo)
 		local b = Instance.new("TextButton")
-		b.Size = UDim2.new(0.9, 0, 0, 36)
+		b.Size = UDim2.new(0.92, 0, 0, 30)
 		b.BackgroundColor3 = Color3.new(0.18, 0.22, 0.3)
 		b.Font = Enum.Font.FredokaOne
 		b.Text = btnInfo.label
 		b.TextColor3 = Color3.new(1, 1, 1)
-		b.TextSize = 12
+		b.TextSize = 11
 		b.Parent = col
 		local bCorner = Instance.new("UICorner")
 		bCorner.CornerRadius = UDim.new(0, 5)
@@ -799,6 +935,20 @@ levelUpGui.Name = "LevelUpScreen"
 levelUpGui.Enabled = false
 levelUpGui.ResetOnSpawn = false
 levelUpGui.Parent = playerGui
+local savedWalkSpeed
+levelUpGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+	if not levelUpGui.Enabled then
+		isClientPaused = false
+		local _hum = player.Character
+		if _hum ~= nil then
+			_hum = _hum:FindFirstChildOfClass("Humanoid")
+		end
+		local hum = _hum
+		if hum and hum.WalkSpeed == 0 then
+			hum.WalkSpeed = if savedWalkSpeed > 0 then savedWalkSpeed else 16
+		end
+	end
+end)
 local modalBackdrop = Instance.new("Frame")
 modalBackdrop.Size = UDim2.new(1, 0, 1, 0)
 modalBackdrop.BackgroundColor3 = Color3.new(0, 0, 0)
@@ -826,7 +976,7 @@ uiLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 uiLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 uiLayout.Padding = UDim.new(0, 25)
 uiLayout.Parent = cardsContainer
-local savedWalkSpeed = 16
+savedWalkSpeed = 16
 local function showLevelUpModal()
 	if isGameOver then
 		return nil
@@ -900,6 +1050,32 @@ local function showLevelUpModal()
 		_condition_3 = 0
 	end
 	local novaLvl = _condition_3
+	local _result_8 = inventory
+	if _result_8 ~= nil then
+		_result_8 = _result_8:FindFirstChild("aether_flare")
+	end
+	local _result_9 = _result_8
+	if _result_9 ~= nil then
+		_result_9 = _result_9.Value
+	end
+	local _condition_4 = _result_9
+	if _condition_4 == nil then
+		_condition_4 = 0
+	end
+	local flareLvl = _condition_4
+	local _result_10 = inventory
+	if _result_10 ~= nil then
+		_result_10 = _result_10:FindFirstChild("vortex_mine")
+	end
+	local _result_11 = _result_10
+	if _result_11 ~= nil then
+		_result_11 = _result_11.Value
+	end
+	local _condition_5 = _result_11
+	if _condition_5 == nil then
+		_condition_5 = 0
+	end
+	local mineLvl = _condition_5
 	-- Opciones disponibles para elegir
 	local allOptions = { {
 		id = "void_boomerang",
@@ -930,14 +1106,49 @@ local function showLevelUpModal()
 		color = Color3.new(0.95, 0.35, 0.1),
 		available = novaLvl < 3,
 	}, {
+		id = "aether_flare",
+		title = if flareLvl == 0 then "Nueva: Fulgor Éter" else "Fulgor de Éter",
+		tag = if flareLvl == 0 then "DESBLOQUEAR" else `Nivel {flareLvl + 1}`,
+		desc = if flareLvl == 0 then "Onda de choque radial de fuego solar que arrasa hordas" else "+55% daño, mayor alcance y menor recarga",
+		color = Color3.new(0.95, 0.60, 0.12),
+		available = flareLvl < 3,
+	}, {
+		id = "vortex_mine",
+		title = if mineLvl == 0 then "Nueva: Minas Vórtice" else "Minas de Vórtice",
+		tag = if mineLvl == 0 then "DESBLOQUEAR" else `Nivel {mineLvl + 1}`,
+		desc = if mineLvl == 0 then "Despliega minas gravitatorias de implosión devastadora" else "+1 mina simultánea y radio expansivo aumentado",
+		color = Color3.new(0.65, 0.25, 0.95),
+		available = mineLvl < 3,
+	}, {
 		id = "speed_boost",
 		title = "Propulsores de Pies",
 		tag = "PASIVA",
 		desc = "+18% velocidad de movimiento permanente",
 		color = Color3.new(0.15, 0.35, 0.55),
 		available = true,
+	}, {
+		id = "magnet_range",
+		title = "Imán Gravitatorio",
+		tag = "PASIVA",
+		desc = "+8 studs de alcance de atracción de gemas EXP",
+		color = Color3.new(0.2, 0.65, 0.95),
+		available = true,
+	}, {
+		id = "area_size",
+		title = "Expansión Cósmica",
+		tag = "PASIVA",
+		desc = "+25% al área y alcance de todas tus armas",
+		color = Color3.new(0.9, 0.3, 0.7),
+		available = true,
+	}, {
+		id = "max_hp",
+		title = "Blindaje Reforzado",
+		tag = "PASIVA",
+		desc = "+25 HP máxima y curación instantánea",
+		color = Color3.new(0.2, 0.7, 0.35),
+		available = true,
 	} }
-	-- Filtrar y tomar hasta 3 opciones
+	-- Filtrar y barajar aleatoriamente para ofrecer 3 opciones variadas cada subida de nivel
 	-- ▼ ReadonlyArray.filter ▼
 	local _newValue = {}
 	local _callback_1 = function(opt)
@@ -952,6 +1163,12 @@ local function showLevelUpModal()
 	end
 	-- ▲ ReadonlyArray.filter ▲
 	local filtered = _newValue
+	for i = #filtered - 1, 1, -1 do
+		local j = math.floor(math.random() * (i + 1))
+		local temp = filtered[i + 1]
+		filtered[i + 1] = filtered[j + 1]
+		filtered[j + 1] = temp
+	end
 	local options = {}
 	do
 		local i = 0
@@ -1033,9 +1250,9 @@ local function showLevelUpModal()
 					selectUpgradeEvent = net:FindFirstChild("SelectUpgrade")
 				end
 			end
-			local _result_8 = selectUpgradeEvent
-			if _result_8 ~= nil then
-				_result_8:FireServer(opt.id)
+			local _result_12 = selectUpgradeEvent
+			if _result_12 ~= nil then
+				_result_12:FireServer(opt.id)
 			end
 			levelUpGui.Enabled = false
 			isClientPaused = false
@@ -1858,7 +2075,21 @@ RunService.Heartbeat:Connect(function(dt)
 	if not dropsFolder then
 		return nil
 	end
-	local magnetRadius = 16
+	local inventory = player:FindFirstChild("Inventory")
+	local _result_1 = inventory
+	if _result_1 ~= nil then
+		_result_1 = _result_1:FindFirstChild("magnet_bonus")
+	end
+	local _result_2 = _result_1
+	if _result_2 ~= nil then
+		_result_2 = _result_2.Value
+	end
+	local _condition = _result_2
+	if _condition == nil then
+		_condition = 0
+	end
+	local magnetBonus = _condition
+	local magnetRadius = 16 + magnetBonus
 	local pickupRadius = 2.5
 	for _, drop in dropsFolder:GetChildren() do
 		if drop:IsA("BasePart") and drop:GetAttribute("Collected") ~= true then
@@ -1882,9 +2113,9 @@ RunService.Heartbeat:Connect(function(dt)
 							collectGemEvent = net:FindFirstChild("CollectGem")
 						end
 					end
-					local _result_1 = collectGemEvent
-					if _result_1 ~= nil then
-						_result_1:FireServer(drop)
+					local _result_3 = collectGemEvent
+					if _result_3 ~= nil then
+						_result_3:FireServer(drop)
 					end
 					SoundManager.playGemSound()
 					TweenService:Create(drop, TweenInfo.new(0.18), {
@@ -1897,3 +2128,381 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	end
 end)
+-- 12. Armas: Fulgor de Éter (Onda de choque radial de área continua)
+local fireAetherFlare
+task.spawn(function()
+	while true do
+		if isClientPaused or isGameOver then
+			task.wait(0.2)
+			continue
+		end
+		local inventory = player:FindFirstChild("Inventory")
+		local _result = inventory
+		if _result ~= nil then
+			_result = _result:FindFirstChild("aether_flare")
+		end
+		local _result_1 = _result
+		if _result_1 ~= nil then
+			_result_1 = _result_1.Value
+		end
+		local _condition = _result_1
+		if _condition == nil then
+			_condition = 0
+		end
+		local flareLvl = _condition
+		if flareLvl <= 0 then
+			task.wait(1.0)
+			continue
+		end
+		local flareDef = WEAPONS.aether_flare.levels[math.min(flareLvl, #WEAPONS.aether_flare.levels)]
+		local cdMultiplier = if activePlatformBuff == "cooldown" then 0.6 else 1.0
+		task.wait(flareDef.cooldown * cdMultiplier)
+		if isClientPaused or isGameOver then
+			continue
+		end
+		local char = player.Character
+		local _result_2 = char
+		if _result_2 ~= nil then
+			_result_2 = _result_2:FindFirstChild("HumanoidRootPart")
+		end
+		local hrp = _result_2
+		if not hrp then
+			continue
+		end
+		local _result_3 = inventory
+		if _result_3 ~= nil then
+			_result_3 = _result_3:FindFirstChild("area_bonus")
+		end
+		local _result_4 = _result_3
+		if _result_4 ~= nil then
+			_result_4 = _result_4.Value
+		end
+		local _condition_1 = _result_4
+		if _condition_1 == nil then
+			_condition_1 = 0
+		end
+		local areaBonus = _condition_1
+		local areaMultiplier = 1.0 + areaBonus
+		local effectiveRadius = flareDef.range * areaMultiplier
+		local dmgMultiplier = if activePlatformBuff == "damage" then 1.5 else 1.0
+		local finalDamage = math.floor(flareDef.damage * dmgMultiplier)
+		fireAetherFlare(hrp.Position, effectiveRadius, finalDamage)
+	end
+end)
+function fireAetherFlare(centerPos, radius, damage)
+	local spawnPos = Vector3.new(centerPos.X, 0.25, centerPos.Z)
+	-- Anillo / Disco de choque radiante dorado Neón
+	local shockwave = Instance.new("Part")
+	shockwave.Name = "AetherFlareVisual"
+	shockwave.Shape = Enum.PartType.Cylinder
+	shockwave.Size = Vector3.new(0.3, 2, 2)
+	local _cFrame = CFrame.new(spawnPos)
+	local _arg0 = CFrame.Angles(0, 0, math.rad(90))
+	shockwave.CFrame = _cFrame * _arg0
+	shockwave.Material = Enum.Material.Neon
+	shockwave.Color = Color3.new(1.0, 0.65, 0.1)
+	shockwave.Transparency = 0.3
+	shockwave.CanCollide = false
+	shockwave.Anchored = true
+	shockwave.Parent = Workspace
+	local light = Instance.new("PointLight")
+	light.Color = shockwave.Color
+	light.Range = radius * 0.8
+	light.Brightness = 4
+	light.Parent = shockwave
+	-- Expansión y desvanecimiento
+	local pulseTime = 0.38
+	TweenService:Create(shockwave, TweenInfo.new(pulseTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.15, radius * 2, radius * 2),
+		Transparency = 1,
+	}):Play()
+	TweenService:Create(light, TweenInfo.new(pulseTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Range = radius * 1.4,
+		Brightness = 0,
+	}):Play()
+	Debris:AddItem(shockwave, pulseTime + 0.05)
+	-- Dañar a todos los enemigos dentro del radio del fulgor
+	local enemiesFolder = Workspace:FindFirstChild("Enemies")
+	if enemiesFolder then
+		for _, enemy in enemiesFolder:GetChildren() do
+			local _condition = enemy:IsA("BasePart")
+			if _condition then
+				local _condition_1 = enemy:GetAttribute("HP")
+				if _condition_1 == nil then
+					_condition_1 = 0
+				end
+				_condition = _condition_1 > 0
+			end
+			if _condition then
+				local _centerPos = centerPos
+				local _position = enemy.Position
+				local dist = (_centerPos - _position).Magnitude
+				if dist <= radius then
+					if not damageEvent then
+						local net = Workspace:FindFirstChild("Network")
+						if net then
+							damageEvent = net:FindFirstChild("DamageEnemy")
+						end
+					end
+					local _position_1 = enemy.Position
+					local _centerPos_1 = centerPos
+					local knockbackDir = (_position_1 - _centerPos_1).Unit
+					local _result = damageEvent
+					if _result ~= nil then
+						_result:FireServer(enemy, damage, knockbackDir)
+					end
+					VisualEffects.showDamagePopup(enemy.Position, damage, true)
+					VisualEffects.flashEnemy(enemy)
+					local _condition_1 = (enemy:GetAttribute("HP"))
+					if _condition_1 == nil then
+						_condition_1 = 0
+					end
+					local enemyHp = _condition_1
+					if enemyHp - damage <= 0 then
+						enemiesDefeatedCount += 1
+					end
+				end
+			end
+		end
+	end
+end
+-- 13. Armas: Minas de Vórtice (Minas gravitatorias de implosión en área)
+local deployVortexMine
+task.spawn(function()
+	while true do
+		if isClientPaused or isGameOver then
+			task.wait(0.2)
+			continue
+		end
+		local inventory = player:FindFirstChild("Inventory")
+		local _result = inventory
+		if _result ~= nil then
+			_result = _result:FindFirstChild("vortex_mine")
+		end
+		local _result_1 = _result
+		if _result_1 ~= nil then
+			_result_1 = _result_1.Value
+		end
+		local _condition = _result_1
+		if _condition == nil then
+			_condition = 0
+		end
+		local mineLvl = _condition
+		if mineLvl <= 0 then
+			task.wait(1.0)
+			continue
+		end
+		local mineDef = WEAPONS.vortex_mine.levels[math.min(mineLvl, #WEAPONS.vortex_mine.levels)]
+		local cdMultiplier = if activePlatformBuff == "cooldown" then 0.6 else 1.0
+		task.wait(mineDef.cooldown * cdMultiplier)
+		if isClientPaused or isGameOver then
+			continue
+		end
+		local char = player.Character
+		local _result_2 = char
+		if _result_2 ~= nil then
+			_result_2 = _result_2:FindFirstChild("HumanoidRootPart")
+		end
+		local hrp = _result_2
+		if not hrp then
+			continue
+		end
+		local _result_3 = inventory
+		if _result_3 ~= nil then
+			_result_3 = _result_3:FindFirstChild("area_bonus")
+		end
+		local _result_4 = _result_3
+		if _result_4 ~= nil then
+			_result_4 = _result_4.Value
+		end
+		local _condition_1 = _result_4
+		if _condition_1 == nil then
+			_condition_1 = 0
+		end
+		local areaBonus = _condition_1
+		local areaMultiplier = 1.0 + areaBonus
+		local dmgMultiplier = if activePlatformBuff == "damage" then 1.5 else 1.0
+		local finalDamage = math.floor(mineDef.damage * dmgMultiplier)
+		local blastRadius = mineDef.range * areaMultiplier
+		local mineCount = mineDef.projectiles
+		do
+			local i = 0
+			local _shouldIncrement = false
+			while true do
+				if _shouldIncrement then
+					i += 1
+				else
+					_shouldIncrement = true
+				end
+				if not (i < mineCount) then
+					break
+				end
+				local angle = (i * (math.pi * 2 / mineCount)) + (math.random() - 0.5) * 0.8
+				local dropDist = 2.5 + math.random() * 2.5
+				local dropPos = Vector3.new(hrp.Position.X + math.cos(angle) * dropDist, 0.3, hrp.Position.Z + math.sin(angle) * dropDist)
+				deployVortexMine(dropPos, blastRadius, finalDamage)
+			end
+		end
+	end
+end)
+local detonateVortexMine
+function deployVortexMine(position, blastRadius, damage)
+	-- Part visual de la mina (Cuerpo de cuarzo oscuro + Esfera neón violeta)
+	local mine = Instance.new("Part")
+	mine.Name = "VortexMineVisual"
+	mine.Shape = Enum.PartType.Ball
+	mine.Size = Vector3.new(1.2, 1.2, 1.2)
+	mine.Position = position
+	mine.Material = Enum.Material.Neon
+	mine.Color = Color3.new(0.65, 0.2, 0.95)
+	mine.CanCollide = false
+	mine.Anchored = true
+	mine.Parent = Workspace
+	local light = Instance.new("PointLight")
+	light.Color = mine.Color
+	light.Range = 8
+	light.Brightness = 2.5
+	light.Parent = mine
+	-- Anillo base de anclaje de la mina
+	local ring = Instance.new("Part")
+	ring.Name = "MineBase"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.15, 2.0, 2.0)
+	local _position = position
+	local _vector3 = Vector3.new(0, 0.2, 0)
+	local _cFrame = CFrame.new(_position - _vector3)
+	local _arg0 = CFrame.Angles(0, 0, math.rad(90))
+	ring.CFrame = _cFrame * _arg0
+	ring.Material = Enum.Material.DiamondPlate
+	ring.Color = Color3.new(0.15, 0.1, 0.2)
+	ring.CanCollide = false
+	ring.Anchored = true
+	ring.Parent = mine
+	-- Monitorear activación por proximidad
+	task.spawn(function()
+		task.wait(0.35)
+		if not mine.Parent then
+			return nil
+		end
+		local detonated = false
+		local triggerRadius = 5.0
+		local maxLifetime = 14.0
+		local mineStartTime = os.clock()
+		while not detonated and mine.Parent and os.clock() - mineStartTime < maxLifetime do
+			task.wait(0.08)
+			if isClientPaused or isGameOver then
+				continue
+			end
+			local enemiesFolder = Workspace:FindFirstChild("Enemies")
+			if enemiesFolder then
+				for _, enemy in enemiesFolder:GetChildren() do
+					local _condition = enemy:IsA("BasePart")
+					if _condition then
+						local _condition_1 = enemy:GetAttribute("HP")
+						if _condition_1 == nil then
+							_condition_1 = 0
+						end
+						_condition = _condition_1 > 0
+					end
+					if _condition then
+						local _position_1 = position
+						local _position_2 = enemy.Position
+						local dist = (_position_1 - _position_2).Magnitude
+						if dist <= triggerRadius then
+							detonated = true
+							break
+						end
+					end
+				end
+			end
+		end
+		if mine.Parent then
+			detonateVortexMine(position, blastRadius, damage)
+			mine:Destroy()
+		end
+	end)
+end
+function detonateVortexMine(position, radius, damage)
+	-- Efecto de Implosión Gravitatoria y Onda expansiva de Vacío
+	local vortex = Instance.new("Part")
+	vortex.Name = "VortexDetonation"
+	vortex.Shape = Enum.PartType.Ball
+	vortex.Size = Vector3.new(0.5, 0.5, 0.5)
+	vortex.Position = position
+	vortex.Material = Enum.Material.Neon
+	vortex.Color = Color3.new(0.75, 0.25, 1.0)
+	vortex.Transparency = 0.2
+	vortex.CanCollide = false
+	vortex.Anchored = true
+	vortex.Parent = Workspace
+	local pulseDuration = 0.45
+	TweenService:Create(vortex, TweenInfo.new(pulseDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size = Vector3.new(radius * 2, radius * 2, radius * 2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(vortex, pulseDuration + 0.05)
+	-- Onda plana expansiva
+	local shockwave = Instance.new("Part")
+	shockwave.Name = "VortexRing"
+	shockwave.Shape = Enum.PartType.Cylinder
+	shockwave.Size = Vector3.new(0.2, 1, 1)
+	local _cFrame = CFrame.new(position)
+	local _arg0 = CFrame.Angles(0, 0, math.rad(90))
+	shockwave.CFrame = _cFrame * _arg0
+	shockwave.Material = Enum.Material.Neon
+	shockwave.Color = Color3.new(0.5, 0.1, 0.9)
+	shockwave.Transparency = 0.3
+	shockwave.CanCollide = false
+	shockwave.Anchored = true
+	shockwave.Parent = Workspace
+	TweenService:Create(shockwave, TweenInfo.new(pulseDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.1, radius * 2.2, radius * 2.2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(shockwave, pulseDuration + 0.05)
+	-- Dañar y atraer levemente a los enemigos en el radio de la implosión
+	local enemiesFolder = Workspace:FindFirstChild("Enemies")
+	if enemiesFolder then
+		for _, enemy in enemiesFolder:GetChildren() do
+			local _condition = enemy:IsA("BasePart")
+			if _condition then
+				local _condition_1 = enemy:GetAttribute("HP")
+				if _condition_1 == nil then
+					_condition_1 = 0
+				end
+				_condition = _condition_1 > 0
+			end
+			if _condition then
+				local _position = position
+				local _position_1 = enemy.Position
+				local dist = (_position - _position_1).Magnitude
+				if dist <= radius then
+					if not damageEvent then
+						local net = Workspace:FindFirstChild("Network")
+						if net then
+							damageEvent = net:FindFirstChild("DamageEnemy")
+						end
+					end
+					-- Knockback dir hacia el centro (efecto vórtice / succión gravitatoria)
+					local _position_2 = position
+					local _position_3 = enemy.Position
+					local pullDir = (_position_2 - _position_3).Unit
+					local _result = damageEvent
+					if _result ~= nil then
+						_result:FireServer(enemy, damage, pullDir * 1.2)
+					end
+					VisualEffects.showDamagePopup(enemy.Position, damage, true)
+					VisualEffects.flashEnemy(enemy)
+					local _condition_1 = (enemy:GetAttribute("HP"))
+					if _condition_1 == nil then
+						_condition_1 = 0
+					end
+					local enemyHp = _condition_1
+					if enemyHp - damage <= 0 then
+						enemiesDefeatedCount += 1
+					end
+				end
+			end
+		end
+	end
+end

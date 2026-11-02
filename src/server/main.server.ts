@@ -19,6 +19,9 @@ EnvironmentManager.buildArenaEnvironment();
 let isGamePaused = false;
 let gameElapsedTime = 0;
 let bossSpawned = false;
+let boss1Spawned = false;
+let boss2Spawned = false;
+let boss3Spawned = false;
 
 // 1. Crear el suelo de la arena física (Baseplate) si no existe
 let baseplate = Workspace.FindFirstChild("Baseplate") as BasePart;
@@ -421,6 +424,16 @@ Players.PlayerAdded.Connect((plr) => {
 	novaLvl.Value = 0; // Desbloqueable en Level Up
 	novaLvl.Parent = inventory;
 
+	const flareLvl = new Instance("IntValue");
+	flareLvl.Name = "aether_flare";
+	flareLvl.Value = 0; // Desbloqueable en Level Up
+	flareLvl.Parent = inventory;
+
+	const mineLvl = new Instance("IntValue");
+	mineLvl.Name = "vortex_mine";
+	mineLvl.Value = 0; // Desbloqueable en Level Up
+	mineLvl.Parent = inventory;
+
 	const maxHpBonus = new Instance("NumberValue");
 	maxHpBonus.Name = "max_hp_bonus";
 	maxHpBonus.Value = 0;
@@ -430,6 +443,16 @@ Players.PlayerAdded.Connect((plr) => {
 	moveSpeedBonus.Name = "speed_bonus";
 	moveSpeedBonus.Value = 0;
 	moveSpeedBonus.Parent = inventory;
+
+	const magnetBonus = new Instance("NumberValue");
+	magnetBonus.Name = "magnet_bonus";
+	magnetBonus.Value = 0;
+	magnetBonus.Parent = inventory;
+
+	const areaBonus = new Instance("NumberValue");
+	areaBonus.Name = "area_bonus";
+	areaBonus.Value = 0;
+	areaBonus.Parent = inventory;
 });
 
 // 9. Manejo de elección de mejoras y REANUDACIÓN
@@ -461,6 +484,18 @@ selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 				val.Value += 1;
 				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Rayo Nova a Nivel ${val.Value}`);
 			}
+		} else if (upgradeId === "aether_flare") {
+			const val = inventory.FindFirstChild("aether_flare") as IntValue;
+			if (val) {
+				val.Value += 1;
+				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Fulgor de Éter a Nivel ${val.Value}`);
+			}
+		} else if (upgradeId === "vortex_mine") {
+			const val = inventory.FindFirstChild("vortex_mine") as IntValue;
+			if (val) {
+				val.Value += 1;
+				print(`[Upgrade] ${player.Name} mejoró/desbloqueó Minas de Vórtice a Nivel ${val.Value}`);
+			}
 		} else if (upgradeId === "speed_boost") {
 			const val = inventory.FindFirstChild("speed_bonus") as NumberValue;
 			if (val) {
@@ -474,6 +509,12 @@ selectUpgradeEvent.OnServerEvent.Connect((player, upgradeIdArg) => {
 				hum.MaxHealth += 25;
 				hum.Health += 25;
 			}
+		} else if (upgradeId === "magnet_range") {
+			const val = inventory.FindFirstChild("magnet_bonus") as NumberValue;
+			if (val) val.Value += 8;
+		} else if (upgradeId === "area_size") {
+			const val = inventory.FindFirstChild("area_bonus") as NumberValue;
+			if (val) val.Value += 0.25;
 		}
 	}
 
@@ -535,7 +576,11 @@ debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
 			if (o) o.Value = 3;
 			const n = inventory.FindFirstChild("nova_beam") as IntValue;
 			if (n) n.Value = 3;
-			print(`[Debug] ${player.Name} ha desbloqueado todas las armas a nivel máximo`);
+			const f = inventory.FindFirstChild("aether_flare") as IntValue;
+			if (f) f.Value = 3;
+			const m = inventory.FindFirstChild("vortex_mine") as IntValue;
+			if (m) m.Value = 3;
+			print(`[Debug] ${player.Name} ha desbloqueado las 6 armas a nivel máximo`);
 		}
 	} else if (action === "give_plasma") {
 		const inventory = player.FindFirstChild("Inventory") as Folder;
@@ -549,9 +594,27 @@ debugActionEvent.OnServerEvent.Connect((player, actionArg) => {
 		const inventory = player.FindFirstChild("Inventory") as Folder;
 		const n = inventory?.FindFirstChild("nova_beam") as IntValue;
 		if (n) n.Value = math.min(3, n.Value + 1);
+	} else if (action === "give_flare") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const f = inventory?.FindFirstChild("aether_flare") as IntValue;
+		if (f) f.Value = math.min(3, f.Value + 1);
+	} else if (action === "give_mines") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const m = inventory?.FindFirstChild("vortex_mine") as IntValue;
+		if (m) m.Value = math.min(3, m.Value + 1);
 	} else if (action === "give_speed") {
 		const hum = char?.FindFirstChildOfClass("Humanoid");
 		if (hum) hum.WalkSpeed += 6;
+	} else if (action === "give_magnet") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const m = inventory?.FindFirstChild("magnet_bonus") as NumberValue;
+		if (m) m.Value += 8;
+		print(`[Debug] ${player.Name} aumentó radio de imán a +${m?.Value ?? 0}`);
+	} else if (action === "give_area") {
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const a = inventory?.FindFirstChild("area_bonus") as NumberValue;
+		if (a) a.Value += 0.25;
+		print(`[Debug] ${player.Name} aumentó área de efecto a +${((a?.Value ?? 0) * 100)}%`);
 	} else if (action === "trigger_zawarudo") {
 		triggerZaWarudo(player);
 	}
@@ -614,6 +677,9 @@ restartGameEvent.OnServerEvent.Connect((player) => {
 	// 4. Resetear tiempo de juego y banderas
 	gameElapsedTime = 0;
 	bossSpawned = false;
+	boss1Spawned = false;
+	boss2Spawned = false;
+	boss3Spawned = false;
 	isGamePaused = false;
 
 	// 5. Resetear stats e inventario del jugador
@@ -635,10 +701,18 @@ restartGameEvent.OnServerEvent.Connect((player) => {
 		if (o) o.Value = 0;
 		const n = inventory.FindFirstChild("nova_beam") as IntValue;
 		if (n) n.Value = 0;
+		const f = inventory.FindFirstChild("aether_flare") as IntValue;
+		if (f) f.Value = 0;
+		const m = inventory.FindFirstChild("vortex_mine") as IntValue;
+		if (m) m.Value = 0;
 		const sp = inventory.FindFirstChild("speed_bonus") as NumberValue;
 		if (sp) sp.Value = 0;
 		const hp = inventory.FindFirstChild("max_hp_bonus") as NumberValue;
 		if (hp) hp.Value = 0;
+		const mg = inventory.FindFirstChild("magnet_bonus") as NumberValue;
+		if (mg) mg.Value = 0;
+		const ar = inventory.FindFirstChild("area_bonus") as NumberValue;
+		if (ar) ar.Value = 0;
 	}
 
 	// 6. Restaurar personaje
@@ -844,6 +918,8 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	enemy.SetAttribute("Damage", config.damage);
 	enemy.SetAttribute("XpReward", config.xpValue);
 	enemy.SetAttribute("Behavior", config.behavior);
+	enemy.SetAttribute("IsBoss", config.isBoss === true);
+	enemy.SetAttribute("EnemyName", config.name);
 	enemy.SetAttribute("InKnockback", false);
 	enemy.SetAttribute("IsDead", false);
 	enemy.SetAttribute("LastShotTime", 0);
@@ -893,14 +969,35 @@ task.spawn(() => {
 
 		gameElapsedTime += 1.5;
 
-		// BOSS EVENT: Minuto 3 (180 segundos)
-		if (gameElapsedTime >= 180 && !bossSpawned) {
+		// BOSS EVENT 1: Minuto 3 (180 segundos) - Coloso de Obsidiana
+		if (gameElapsedTime >= 180 && !boss1Spawned) {
+			boss1Spawned = true;
 			bossSpawned = true;
-			print("[BOSS EVENT] ¡El Señor del Vacío ha despertado!");
-			bossAlertEvent.FireAllClients("¡SEÑOR DEL VACÍO HA DESPERTADO!");
+			print("[BOSS EVENT] ¡El Coloso de Obsidiana ha despertado!");
+			bossAlertEvent.FireAllClients("¡COLOSO DE OBSIDIANA HA DESPERTADO!");
 
-			const bossPart = createEnemyInstance(ENEMY_TYPES.overlord_boss, 999);
+			const bossPart = createEnemyInstance(ENEMY_TYPES.obsidian_colossus ?? ENEMY_TYPES.overlord_boss, 991);
 			bossPart.Position = new Vector3(0, 4.5, 60); // Spawnea cerca de la arena
+		}
+
+		// BOSS EVENT 2: Minuto 6 (360 segundos) - Cosechador del Vacío
+		if (gameElapsedTime >= 360 && !boss2Spawned) {
+			boss2Spawned = true;
+			print("[BOSS EVENT] ¡El Cosechador del Vacío se materializa!");
+			bossAlertEvent.FireAllClients("¡COSECHADOR DEL VACÍO SE MATERIALIZA!");
+
+			const bossPart = createEnemyInstance(ENEMY_TYPES.void_harvester, 992);
+			bossPart.Position = new Vector3(50, 4.5, 0);
+		}
+
+		// BOSS EVENT 3: Minuto 9 (540 segundos) - Soberano del Éter
+		if (gameElapsedTime >= 540 && !boss3Spawned) {
+			boss3Spawned = true;
+			print("[BOSS EVENT] ¡El Soberano del Éter desciende sobre la arena!");
+			bossAlertEvent.FireAllClients("¡SOBERANO DEL ÉTER DESCIENDE!");
+
+			const bossPart = createEnemyInstance(ENEMY_TYPES.aether_sovereign, 993);
+			bossPart.Position = new Vector3(0, 4.5, -60);
 		}
 
 		const currentCount = enemiesFolder.GetChildren().size();

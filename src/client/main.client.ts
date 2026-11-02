@@ -91,6 +91,136 @@ task.spawn(() => {
 	}
 });
 
+// Barra de Salud de Jefe Colosal en el HUD (Top Center, debajo del reloj)
+const bossFrame = new Instance("Frame");
+bossFrame.Name = "BossHealthFrame";
+bossFrame.Size = new UDim2(0, 360, 0, 44);
+bossFrame.Position = new UDim2(0.5, -180, 0.088, 0);
+bossFrame.BackgroundColor3 = new Color3(0.08, 0.05, 0.12);
+bossFrame.BackgroundTransparency = 0.2;
+bossFrame.BorderSizePixel = 0;
+bossFrame.Visible = false;
+bossFrame.Parent = hudScreen;
+
+const bfCorner = new Instance("UICorner");
+bfCorner.CornerRadius = new UDim(0, 8);
+bfCorner.Parent = bossFrame;
+
+const bfStroke = new Instance("UIStroke");
+bfStroke.Color = new Color3(0.95, 0.2, 0.35); // Borde carmesí neón
+bfStroke.Thickness = 1.5;
+bfStroke.Parent = bossFrame;
+
+const bossTopRow = new Instance("Frame");
+bossTopRow.Size = new UDim2(1, -16, 0, 18);
+bossTopRow.Position = new UDim2(0, 8, 0, 4);
+bossTopRow.BackgroundTransparency = 1;
+bossTopRow.Parent = bossFrame;
+
+const bossNameLabel = new Instance("TextLabel");
+bossNameLabel.Name = "BossName";
+bossNameLabel.Size = new UDim2(0.7, 0, 1, 0);
+bossNameLabel.BackgroundTransparency = 1;
+bossNameLabel.Font = Enum.Font.FredokaOne;
+bossNameLabel.Text = "👑 COLOSO DE OBSIDIANA";
+bossNameLabel.TextColor3 = new Color3(1, 0.85, 0.4);
+bossNameLabel.TextSize = 13;
+bossNameLabel.TextXAlignment = Enum.TextXAlignment.Left;
+bossNameLabel.Parent = bossTopRow;
+
+const bossHpLabel = new Instance("TextLabel");
+bossHpLabel.Name = "BossHpText";
+bossHpLabel.Size = new UDim2(0.3, 0, 1, 0);
+bossHpLabel.Position = new UDim2(0.7, 0, 0, 0);
+bossHpLabel.BackgroundTransparency = 1;
+bossHpLabel.Font = Enum.Font.FredokaOne;
+bossHpLabel.Text = "100%";
+bossHpLabel.TextColor3 = new Color3(1, 0.3, 0.4);
+bossHpLabel.TextSize = 12;
+bossHpLabel.TextXAlignment = Enum.TextXAlignment.Right;
+bossHpLabel.Parent = bossTopRow;
+
+const bossBarBg = new Instance("Frame");
+bossBarBg.Name = "BossBarBg";
+bossBarBg.Size = new UDim2(1, -16, 0, 12);
+bossBarBg.Position = new UDim2(0, 8, 0, 24);
+bossBarBg.BackgroundColor3 = new Color3(0.2, 0.05, 0.08);
+bossBarBg.BorderSizePixel = 0;
+bossBarBg.Parent = bossFrame;
+
+const bbgCorner = new Instance("UICorner");
+bbgCorner.CornerRadius = new UDim(0, 4);
+bbgCorner.Parent = bossBarBg;
+
+const bossBarFill = new Instance("Frame");
+bossBarFill.Name = "BossBarFill";
+bossBarFill.Size = new UDim2(1, 0, 1, 0);
+bossBarFill.BackgroundColor3 = new Color3(0.95, 0.2, 0.3);
+bossBarFill.BorderSizePixel = 0;
+bossBarFill.Parent = bossBarBg;
+
+const bfillCorner = new Instance("UICorner");
+bfillCorner.CornerRadius = new UDim(0, 4);
+bfillCorner.Parent = bossBarFill;
+
+const bossGradient = new Instance("UIGradient");
+bossGradient.Color = new ColorSequence([
+	new ColorSequenceKeypoint(0, new Color3(0.75, 0.1, 0.3)),
+	new ColorSequenceKeypoint(0.5, new Color3(0.95, 0.25, 0.35)),
+	new ColorSequenceKeypoint(1, new Color3(1.0, 0.6, 0.3)),
+]);
+bossGradient.Parent = bossBarFill;
+
+// Loop reactivo de actualización de la barra de salud del jefe
+task.spawn(() => {
+	while (true) {
+		task.wait(0.1);
+		if (isGameOver) {
+			bossFrame.Visible = false;
+			continue;
+		}
+
+		const enemiesFolder = Workspace.FindFirstChild("Enemies") as Folder;
+		let activeBoss: BasePart | undefined = undefined;
+
+		if (enemiesFolder) {
+			for (const enemy of enemiesFolder.GetChildren()) {
+				if (enemy.IsA("BasePart")) {
+					const isBoss = enemy.GetAttribute("IsBoss") === true || enemy.GetAttribute("Behavior") === "boss";
+					const hp = (enemy.GetAttribute("HP") as number) ?? 0;
+					if (isBoss && hp > 0) {
+						activeBoss = enemy;
+						break;
+					}
+				}
+			}
+		}
+
+		if (activeBoss) {
+			const hp = math.max(0, (activeBoss.GetAttribute("HP") as number) ?? 0);
+			const maxHp = math.max(1, (activeBoss.GetAttribute("MaxHP") as number) ?? 100);
+			const rawName = (activeBoss.GetAttribute("EnemyName") as string) ?? activeBoss.Name;
+			const bossName = rawName.gsub("_%d+", "")[0];
+
+			bossNameLabel.Text = `👑 ${bossName.upper()}`;
+			const pct = math.clamp(hp / maxHp, 0, 1);
+			bossHpLabel.Text = `${math.floor(hp)} / ${maxHp} (${math.floor(pct * 100)}%)`;
+
+			TweenService.Create(bossBarFill, new TweenInfo(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Size: new UDim2(pct, 0, 1, 0),
+			}).Play();
+
+			if (!bossFrame.Visible) {
+				bossFrame.Visible = true;
+			}
+		} else {
+			if (bossFrame.Visible) {
+				bossFrame.Visible = false;
+			}
+		}
+	}
+});
+
 // Indicador / Cooldown de Dash en HUD
 const dashIndicator = new Instance("Frame");
 dashIndicator.Name = "DashIndicator";
@@ -415,8 +545,8 @@ dbCorner.Parent = debugToggleBtn;
 
 const debugPanel = new Instance("Frame");
 debugPanel.Name = "DebugPanel";
-debugPanel.Size = new UDim2(0, 480, 0, 260); // Panel horizontal apaisado con columnas
-debugPanel.Position = new UDim2(0.98, -480, 0.065, 0);
+debugPanel.Size = new UDim2(0, 520, 0, 310); // Panel horizontal apaisado con columnas
+debugPanel.Position = new UDim2(0.98, -520, 0.065, 0);
 debugPanel.BackgroundColor3 = new Color3(0.08, 0.1, 0.14);
 debugPanel.BorderSizePixel = 0;
 debugPanel.Visible = false;
@@ -435,7 +565,7 @@ const columnsContainer = new Instance("Frame");
 columnsContainer.Size = new UDim2(1, -16, 1, -16);
 columnsContainer.Position = new UDim2(0, 8, 0, 8);
 columnsContainer.BackgroundTransparency = 1;
-columnsContainer.Parent = debugPanel;
+columnsContainer.Parent = columnsContainer ? debugPanel : debugPanel;
 
 const columnsLayout = new Instance("UIListLayout");
 columnsLayout.FillDirection = Enum.FillDirection.Horizontal;
@@ -453,6 +583,8 @@ const debugCategories = [
 			{ id: "give_nova", label: "🔥 Rayo Nova" },
 			{ id: "give_orbits", label: "🪐 Órbitas Crono" },
 			{ id: "give_plasma", label: "🟣 Bláster Plasma" },
+			{ id: "give_flare", label: "💥 Fulgor Éter" },
+			{ id: "give_mines", label: "💣 Minas Vórtice" },
 		],
 	},
 	{
@@ -463,6 +595,8 @@ const debugCategories = [
 			{ id: "instant_level_up", label: "⭐ Level Up (+1)" },
 			{ id: "heal_player", label: "❤️ Curar al 100%" },
 			{ id: "give_speed", label: "👟 +6 Velocidad" },
+			{ id: "give_magnet", label: "🧲 +8 Imán EXP" },
+			{ id: "give_area", label: "📏 +25% Área" },
 		],
 	},
 	{
@@ -491,26 +625,26 @@ debugCategories.forEach((cat) => {
 
 	const cLayout = new Instance("UIListLayout");
 	cLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center;
-	cLayout.Padding = new UDim(0, 6);
+	cLayout.Padding = new UDim(0, 4);
 	cLayout.Parent = col;
 
 	const header = new Instance("TextLabel");
-	header.Size = new UDim2(1, 0, 0, 26);
+	header.Size = new UDim2(1, 0, 0, 24);
 	header.BackgroundTransparency = 1;
 	header.Font = Enum.Font.FredokaOne;
 	header.Text = cat.title;
 	header.TextColor3 = cat.headerColor;
-	header.TextSize = 13;
+	header.TextSize = 12;
 	header.Parent = col;
 
 	cat.buttons.forEach((btnInfo) => {
 		const b = new Instance("TextButton");
-		b.Size = new UDim2(0.9, 0, 0, 36);
+		b.Size = new UDim2(0.92, 0, 0, 30);
 		b.BackgroundColor3 = new Color3(0.18, 0.22, 0.3);
 		b.Font = Enum.Font.FredokaOne;
 		b.Text = btnInfo.label;
 		b.TextColor3 = new Color3(1, 1, 1);
-		b.TextSize = 12;
+		b.TextSize = 11;
 		b.Parent = col;
 
 		const bCorner = new Instance("UICorner");
@@ -755,6 +889,16 @@ levelUpGui.Enabled = false;
 levelUpGui.ResetOnSpawn = false;
 levelUpGui.Parent = playerGui;
 
+levelUpGui.GetPropertyChangedSignal("Enabled").Connect(() => {
+	if (!levelUpGui.Enabled) {
+		isClientPaused = false;
+		const hum = player.Character?.FindFirstChildOfClass("Humanoid");
+		if (hum && hum.WalkSpeed === 0) {
+			hum.WalkSpeed = savedWalkSpeed > 0 ? savedWalkSpeed : 16;
+		}
+	}
+});
+
 const modalBackdrop = new Instance("Frame");
 modalBackdrop.Size = new UDim2(1, 0, 1, 0);
 modalBackdrop.BackgroundColor3 = new Color3(0, 0, 0);
@@ -811,6 +955,8 @@ function showLevelUpModal() {
 	const plasmaLvl = (inventory?.FindFirstChild("plasma_blaster") as IntValue)?.Value ?? 0;
 	const orbitsLvl = (inventory?.FindFirstChild("chrono_orbits") as IntValue)?.Value ?? 0;
 	const novaLvl = (inventory?.FindFirstChild("nova_beam") as IntValue)?.Value ?? 0;
+	const flareLvl = (inventory?.FindFirstChild("aether_flare") as IntValue)?.Value ?? 0;
+	const mineLvl = (inventory?.FindFirstChild("vortex_mine") as IntValue)?.Value ?? 0;
 
 	// Opciones disponibles para elegir
 	const allOptions = [
@@ -847,6 +993,22 @@ function showLevelUpModal() {
 			available: novaLvl < 3,
 		},
 		{
+			id: "aether_flare",
+			title: flareLvl === 0 ? "Nueva: Fulgor Éter" : "Fulgor de Éter",
+			tag: flareLvl === 0 ? "DESBLOQUEAR" : `Nivel ${flareLvl + 1}`,
+			desc: flareLvl === 0 ? "Onda de choque radial de fuego solar que arrasa hordas" : "+55% daño, mayor alcance y menor recarga",
+			color: new Color3(0.95, 0.60, 0.12),
+			available: flareLvl < 3,
+		},
+		{
+			id: "vortex_mine",
+			title: mineLvl === 0 ? "Nueva: Minas Vórtice" : "Minas de Vórtice",
+			tag: mineLvl === 0 ? "DESBLOQUEAR" : `Nivel ${mineLvl + 1}`,
+			desc: mineLvl === 0 ? "Despliega minas gravitatorias de implosión devastadora" : "+1 mina simultánea y radio expansivo aumentado",
+			color: new Color3(0.65, 0.25, 0.95),
+			available: mineLvl < 3,
+		},
+		{
 			id: "speed_boost",
 			title: "Propulsores de Pies",
 			tag: "PASIVA",
@@ -854,10 +1016,41 @@ function showLevelUpModal() {
 			color: new Color3(0.15, 0.35, 0.55),
 			available: true,
 		},
+		{
+			id: "magnet_range",
+			title: "Imán Gravitatorio",
+			tag: "PASIVA",
+			desc: "+8 studs de alcance de atracción de gemas EXP",
+			color: new Color3(0.2, 0.65, 0.95),
+			available: true,
+		},
+		{
+			id: "area_size",
+			title: "Expansión Cósmica",
+			tag: "PASIVA",
+			desc: "+25% al área y alcance de todas tus armas",
+			color: new Color3(0.9, 0.3, 0.7),
+			available: true,
+		},
+		{
+			id: "max_hp",
+			title: "Blindaje Reforzado",
+			tag: "PASIVA",
+			desc: "+25 HP máxima y curación instantánea",
+			color: new Color3(0.2, 0.7, 0.35),
+			available: true,
+		},
 	];
 
-	// Filtrar y tomar hasta 3 opciones
+	// Filtrar y barajar aleatoriamente para ofrecer 3 opciones variadas cada subida de nivel
 	const filtered = allOptions.filter((opt) => opt.available);
+	for (let i = filtered.size() - 1; i > 0; i--) {
+		const j = math.floor(math.random() * (i + 1));
+		const temp = filtered[i];
+		filtered[i] = filtered[j];
+		filtered[j] = temp;
+	}
+
 	const options = [];
 	for (let i = 0; i < math.min(3, filtered.size()); i++) {
 		options.push(filtered[i]);
@@ -1528,7 +1721,9 @@ RunService.Heartbeat.Connect((dt) => {
 	const dropsFolder = Workspace.FindFirstChild("Drops") as Folder;
 	if (!dropsFolder) return;
 
-	const magnetRadius = 16;
+	const inventory = player.FindFirstChild("Inventory") as Folder;
+	const magnetBonus = (inventory?.FindFirstChild("magnet_bonus") as NumberValue)?.Value ?? 0;
+	const magnetRadius = 16 + magnetBonus;
 	const pickupRadius = 2.5;
 
 	for (const drop of dropsFolder.GetChildren()) {
@@ -1558,3 +1753,284 @@ RunService.Heartbeat.Connect((dt) => {
 		}
 	}
 });
+
+// 12. Armas: Fulgor de Éter (Onda de choque radial de área continua)
+task.spawn(() => {
+	while (true) {
+		if (isClientPaused || isGameOver) {
+			task.wait(0.2);
+			continue;
+		}
+
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const flareLvl = (inventory?.FindFirstChild("aether_flare") as IntValue)?.Value ?? 0;
+
+		if (flareLvl <= 0) {
+			task.wait(1.0);
+			continue;
+		}
+
+		const flareDef = WEAPONS.aether_flare.levels[math.min(flareLvl, WEAPONS.aether_flare.levels.size()) - 1];
+		const cdMultiplier = activePlatformBuff === "cooldown" ? 0.6 : 1.0;
+		task.wait(flareDef.cooldown * cdMultiplier);
+
+		if (isClientPaused || isGameOver) continue;
+
+		const char = player.Character;
+		const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+		if (!hrp) continue;
+
+		const areaBonus = (inventory?.FindFirstChild("area_bonus") as NumberValue)?.Value ?? 0;
+		const areaMultiplier = 1.0 + areaBonus;
+		const effectiveRadius = flareDef.range * areaMultiplier;
+
+		const dmgMultiplier = activePlatformBuff === "damage" ? 1.5 : 1.0;
+		const finalDamage = math.floor(flareDef.damage * dmgMultiplier);
+
+		fireAetherFlare(hrp.Position, effectiveRadius, finalDamage);
+	}
+});
+
+function fireAetherFlare(centerPos: Vector3, radius: number, damage: number) {
+	const spawnPos = new Vector3(centerPos.X, 0.25, centerPos.Z);
+
+	// Anillo / Disco de choque radiante dorado Neón
+	const shockwave = new Instance("Part");
+	shockwave.Name = "AetherFlareVisual";
+	shockwave.Shape = Enum.PartType.Cylinder;
+	shockwave.Size = new Vector3(0.3, 2, 2);
+	shockwave.CFrame = new CFrame(spawnPos).mul(CFrame.Angles(0, 0, math.rad(90)));
+	shockwave.Material = Enum.Material.Neon;
+	shockwave.Color = new Color3(1.0, 0.65, 0.1); // Ámbar solar radiante
+	shockwave.Transparency = 0.3;
+	shockwave.CanCollide = false;
+	shockwave.Anchored = true;
+	shockwave.Parent = Workspace;
+
+	const light = new Instance("PointLight");
+	light.Color = shockwave.Color;
+	light.Range = radius * 0.8;
+	light.Brightness = 4;
+	light.Parent = shockwave;
+
+	// Expansión y desvanecimiento
+	const pulseTime = 0.38;
+	TweenService.Create(shockwave, new TweenInfo(pulseTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size: new Vector3(0.15, radius * 2, radius * 2),
+		Transparency: 1,
+	}).Play();
+
+	TweenService.Create(light, new TweenInfo(pulseTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Range: radius * 1.4,
+		Brightness: 0,
+	}).Play();
+
+	Debris.AddItem(shockwave, pulseTime + 0.05);
+
+	// Dañar a todos los enemigos dentro del radio del fulgor
+	const enemiesFolder = Workspace.FindFirstChild("Enemies") as Folder;
+	if (enemiesFolder) {
+		for (const enemy of enemiesFolder.GetChildren()) {
+			if (enemy.IsA("BasePart") && (enemy.GetAttribute("HP") as number ?? 0) > 0) {
+				const dist = centerPos.sub(enemy.Position).Magnitude;
+				if (dist <= radius) {
+					if (!damageEvent) {
+						const net = Workspace.FindFirstChild("Network") as Folder;
+						if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
+					}
+					const knockbackDir = enemy.Position.sub(centerPos).Unit;
+					damageEvent?.FireServer(enemy, damage, knockbackDir);
+					VisualEffects.showDamagePopup(enemy.Position, damage, true);
+					VisualEffects.flashEnemy(enemy);
+
+					const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
+					if (enemyHp - damage <= 0) {
+						enemiesDefeatedCount++;
+					}
+				}
+			}
+		}
+	}
+}
+
+// 13. Armas: Minas de Vórtice (Minas gravitatorias de implosión en área)
+task.spawn(() => {
+	while (true) {
+		if (isClientPaused || isGameOver) {
+			task.wait(0.2);
+			continue;
+		}
+
+		const inventory = player.FindFirstChild("Inventory") as Folder;
+		const mineLvl = (inventory?.FindFirstChild("vortex_mine") as IntValue)?.Value ?? 0;
+
+		if (mineLvl <= 0) {
+			task.wait(1.0);
+			continue;
+		}
+
+		const mineDef = WEAPONS.vortex_mine.levels[math.min(mineLvl, WEAPONS.vortex_mine.levels.size()) - 1];
+		const cdMultiplier = activePlatformBuff === "cooldown" ? 0.6 : 1.0;
+		task.wait(mineDef.cooldown * cdMultiplier);
+
+		if (isClientPaused || isGameOver) continue;
+
+		const char = player.Character;
+		const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+		if (!hrp) continue;
+
+		const areaBonus = (inventory?.FindFirstChild("area_bonus") as NumberValue)?.Value ?? 0;
+		const areaMultiplier = 1.0 + areaBonus;
+		const dmgMultiplier = activePlatformBuff === "damage" ? 1.5 : 1.0;
+		const finalDamage = math.floor(mineDef.damage * dmgMultiplier);
+		const blastRadius = mineDef.range * areaMultiplier;
+		const mineCount = mineDef.projectiles;
+
+		for (let i = 0; i < mineCount; i++) {
+			const angle = (i * (math.pi * 2 / mineCount)) + (math.random() - 0.5) * 0.8;
+			const dropDist = 2.5 + math.random() * 2.5;
+			const dropPos = new Vector3(
+				hrp.Position.X + math.cos(angle) * dropDist,
+				0.3,
+				hrp.Position.Z + math.sin(angle) * dropDist,
+			);
+			deployVortexMine(dropPos, blastRadius, finalDamage);
+		}
+	}
+});
+
+function deployVortexMine(position: Vector3, blastRadius: number, damage: number) {
+	// Part visual de la mina (Cuerpo de cuarzo oscuro + Esfera neón violeta)
+	const mine = new Instance("Part");
+	mine.Name = "VortexMineVisual";
+	mine.Shape = Enum.PartType.Ball;
+	mine.Size = new Vector3(1.2, 1.2, 1.2);
+	mine.Position = position;
+	mine.Material = Enum.Material.Neon;
+	mine.Color = new Color3(0.65, 0.2, 0.95); // Púrpura cósmico
+	mine.CanCollide = false;
+	mine.Anchored = true;
+	mine.Parent = Workspace;
+
+	const light = new Instance("PointLight");
+	light.Color = mine.Color;
+	light.Range = 8;
+	light.Brightness = 2.5;
+	light.Parent = mine;
+
+	// Anillo base de anclaje de la mina
+	const ring = new Instance("Part");
+	ring.Name = "MineBase";
+	ring.Shape = Enum.PartType.Cylinder;
+	ring.Size = new Vector3(0.15, 2.0, 2.0);
+	ring.CFrame = new CFrame(position.sub(new Vector3(0, 0.2, 0))).mul(CFrame.Angles(0, 0, math.rad(90)));
+	ring.Material = Enum.Material.DiamondPlate;
+	ring.Color = new Color3(0.15, 0.1, 0.2);
+	ring.CanCollide = false;
+	ring.Anchored = true;
+	ring.Parent = mine;
+
+	// Monitorear activación por proximidad
+	task.spawn(() => {
+		task.wait(0.35); // Tiempo de armado
+		if (!mine.Parent) return;
+
+		let detonated = false;
+		const triggerRadius = 5.0;
+		const maxLifetime = 14.0;
+		const mineStartTime = os.clock();
+
+		while (!detonated && mine.Parent && os.clock() - mineStartTime < maxLifetime) {
+			task.wait(0.08);
+			if (isClientPaused || isGameOver) continue;
+
+			const enemiesFolder = Workspace.FindFirstChild("Enemies") as Folder;
+			if (enemiesFolder) {
+				for (const enemy of enemiesFolder.GetChildren()) {
+					if (enemy.IsA("BasePart") && (enemy.GetAttribute("HP") as number ?? 0) > 0) {
+						const dist = position.sub(enemy.Position).Magnitude;
+						if (dist <= triggerRadius) {
+							detonated = true;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		if (mine.Parent) {
+			detonateVortexMine(position, blastRadius, damage);
+			mine.Destroy();
+		}
+	});
+}
+
+function detonateVortexMine(position: Vector3, radius: number, damage: number) {
+	// Efecto de Implosión Gravitatoria y Onda expansiva de Vacío
+	const vortex = new Instance("Part");
+	vortex.Name = "VortexDetonation";
+	vortex.Shape = Enum.PartType.Ball;
+	vortex.Size = new Vector3(0.5, 0.5, 0.5);
+	vortex.Position = position;
+	vortex.Material = Enum.Material.Neon;
+	vortex.Color = new Color3(0.75, 0.25, 1.0); // Violeta vórtice
+	vortex.Transparency = 0.2;
+	vortex.CanCollide = false;
+	vortex.Anchored = true;
+	vortex.Parent = Workspace;
+
+	const pulseDuration = 0.45;
+	TweenService.Create(vortex, new TweenInfo(pulseDuration, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+		Size: new Vector3(radius * 2, radius * 2, radius * 2),
+		Transparency: 1,
+	}).Play();
+
+	Debris.AddItem(vortex, pulseDuration + 0.05);
+
+	// Onda plana expansiva
+	const shockwave = new Instance("Part");
+	shockwave.Name = "VortexRing";
+	shockwave.Shape = Enum.PartType.Cylinder;
+	shockwave.Size = new Vector3(0.2, 1, 1);
+	shockwave.CFrame = new CFrame(position).mul(CFrame.Angles(0, 0, math.rad(90)));
+	shockwave.Material = Enum.Material.Neon;
+	shockwave.Color = new Color3(0.5, 0.1, 0.9);
+	shockwave.Transparency = 0.3;
+	shockwave.CanCollide = false;
+	shockwave.Anchored = true;
+	shockwave.Parent = Workspace;
+
+	TweenService.Create(shockwave, new TweenInfo(pulseDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size: new Vector3(0.1, radius * 2.2, radius * 2.2),
+		Transparency: 1,
+	}).Play();
+
+	Debris.AddItem(shockwave, pulseDuration + 0.05);
+
+	// Dañar y atraer levemente a los enemigos en el radio de la implosión
+	const enemiesFolder = Workspace.FindFirstChild("Enemies") as Folder;
+	if (enemiesFolder) {
+		for (const enemy of enemiesFolder.GetChildren()) {
+			if (enemy.IsA("BasePart") && (enemy.GetAttribute("HP") as number ?? 0) > 0) {
+				const dist = position.sub(enemy.Position).Magnitude;
+				if (dist <= radius) {
+					if (!damageEvent) {
+						const net = Workspace.FindFirstChild("Network") as Folder;
+						if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
+					}
+
+					// Knockback dir hacia el centro (efecto vórtice / succión gravitatoria)
+					const pullDir = position.sub(enemy.Position).Unit;
+					damageEvent?.FireServer(enemy, damage, pullDir.mul(1.2));
+					VisualEffects.showDamagePopup(enemy.Position, damage, true);
+					VisualEffects.flashEnemy(enemy);
+
+					const enemyHp = (enemy.GetAttribute("HP") as number) ?? 0;
+					if (enemyHp - damage <= 0) {
+						enemiesDefeatedCount++;
+					}
+				}
+			}
+		}
+	}
+}

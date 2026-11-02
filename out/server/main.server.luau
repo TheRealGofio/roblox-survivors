@@ -21,6 +21,9 @@ EnvironmentManager.buildArenaEnvironment()
 local isGamePaused = false
 local gameElapsedTime = 0
 local bossSpawned = false
+local boss1Spawned = false
+local boss2Spawned = false
+local boss3Spawned = false
 -- 1. Crear el suelo de la arena física (Baseplate) si no existe
 local baseplate = Workspace:FindFirstChild("Baseplate")
 if not baseplate then
@@ -413,6 +416,14 @@ Players.PlayerAdded:Connect(function(plr)
 	novaLvl.Name = "nova_beam"
 	novaLvl.Value = 0
 	novaLvl.Parent = inventory
+	local flareLvl = Instance.new("IntValue")
+	flareLvl.Name = "aether_flare"
+	flareLvl.Value = 0
+	flareLvl.Parent = inventory
+	local mineLvl = Instance.new("IntValue")
+	mineLvl.Name = "vortex_mine"
+	mineLvl.Value = 0
+	mineLvl.Parent = inventory
 	local maxHpBonus = Instance.new("NumberValue")
 	maxHpBonus.Name = "max_hp_bonus"
 	maxHpBonus.Value = 0
@@ -421,6 +432,14 @@ Players.PlayerAdded:Connect(function(plr)
 	moveSpeedBonus.Name = "speed_bonus"
 	moveSpeedBonus.Value = 0
 	moveSpeedBonus.Parent = inventory
+	local magnetBonus = Instance.new("NumberValue")
+	magnetBonus.Name = "magnet_bonus"
+	magnetBonus.Value = 0
+	magnetBonus.Parent = inventory
+	local areaBonus = Instance.new("NumberValue")
+	areaBonus.Name = "area_bonus"
+	areaBonus.Value = 0
+	areaBonus.Parent = inventory
 end)
 -- 9. Manejo de elección de mejoras y REANUDACIÓN
 selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
@@ -451,6 +470,18 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 				val.Value += 1
 				print(`[Upgrade] {player.Name} mejoró/desbloqueó Rayo Nova a Nivel {val.Value}`)
 			end
+		elseif upgradeId == "aether_flare" then
+			local val = inventory:FindFirstChild("aether_flare")
+			if val then
+				val.Value += 1
+				print(`[Upgrade] {player.Name} mejoró/desbloqueó Fulgor de Éter a Nivel {val.Value}`)
+			end
+		elseif upgradeId == "vortex_mine" then
+			local val = inventory:FindFirstChild("vortex_mine")
+			if val then
+				val.Value += 1
+				print(`[Upgrade] {player.Name} mejoró/desbloqueó Minas de Vórtice a Nivel {val.Value}`)
+			end
 		elseif upgradeId == "speed_boost" then
 			local val = inventory:FindFirstChild("speed_bonus")
 			if val then
@@ -473,6 +504,16 @@ selectUpgradeEvent.OnServerEvent:Connect(function(player, upgradeIdArg)
 			if hum then
 				hum.MaxHealth += 25
 				hum.Health += 25
+			end
+		elseif upgradeId == "magnet_range" then
+			local val = inventory:FindFirstChild("magnet_bonus")
+			if val then
+				val.Value += 8
+			end
+		elseif upgradeId == "area_size" then
+			local val = inventory:FindFirstChild("area_bonus")
+			if val then
+				val.Value += 0.25
 			end
 		end
 	end
@@ -567,7 +608,15 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 			if n then
 				n.Value = 3
 			end
-			print(`[Debug] {player.Name} ha desbloqueado todas las armas a nivel máximo`)
+			local f = inventory:FindFirstChild("aether_flare")
+			if f then
+				f.Value = 3
+			end
+			local m = inventory:FindFirstChild("vortex_mine")
+			if m then
+				m.Value = 3
+			end
+			print(`[Debug] {player.Name} ha desbloqueado las 6 armas a nivel máximo`)
 		end
 	elseif action == "give_plasma" then
 		local inventory = player:FindFirstChild("Inventory")
@@ -599,6 +648,26 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 		if n then
 			n.Value = math.min(3, n.Value + 1)
 		end
+	elseif action == "give_flare" then
+		local inventory = player:FindFirstChild("Inventory")
+		local _result_1 = inventory
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("aether_flare")
+		end
+		local f = _result_1
+		if f then
+			f.Value = math.min(3, f.Value + 1)
+		end
+	elseif action == "give_mines" then
+		local inventory = player:FindFirstChild("Inventory")
+		local _result_1 = inventory
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("vortex_mine")
+		end
+		local m = _result_1
+		if m then
+			m.Value = math.min(3, m.Value + 1)
+		end
 	elseif action == "give_speed" then
 		local _hum = char
 		if _hum ~= nil then
@@ -608,6 +677,46 @@ debugActionEvent.OnServerEvent:Connect(function(player, actionArg)
 		if hum then
 			hum.WalkSpeed += 6
 		end
+	elseif action == "give_magnet" then
+		local inventory = player:FindFirstChild("Inventory")
+		local _result_1 = inventory
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("magnet_bonus")
+		end
+		local m = _result_1
+		if m then
+			m.Value += 8
+		end
+		local _exp = player.Name
+		local _result_2 = m
+		if _result_2 ~= nil then
+			_result_2 = _result_2.Value
+		end
+		local _condition = _result_2
+		if _condition == nil then
+			_condition = 0
+		end
+		print(`[Debug] {_exp} aumentó radio de imán a +{_condition}`)
+	elseif action == "give_area" then
+		local inventory = player:FindFirstChild("Inventory")
+		local _result_1 = inventory
+		if _result_1 ~= nil then
+			_result_1 = _result_1:FindFirstChild("area_bonus")
+		end
+		local a = _result_1
+		if a then
+			a.Value += 0.25
+		end
+		local _exp = player.Name
+		local _result_2 = a
+		if _result_2 ~= nil then
+			_result_2 = _result_2.Value
+		end
+		local _condition = _result_2
+		if _condition == nil then
+			_condition = 0
+		end
+		print(`[Debug] {_exp} aumentó área de efecto a +{(_condition * 100)}%`)
 	elseif action == "trigger_zawarudo" then
 		triggerZaWarudo(player)
 	end
@@ -666,6 +775,9 @@ restartGameEvent.OnServerEvent:Connect(function(player)
 	-- 4. Resetear tiempo de juego y banderas
 	gameElapsedTime = 0
 	bossSpawned = false
+	boss1Spawned = false
+	boss2Spawned = false
+	boss3Spawned = false
 	isGamePaused = false
 	-- 5. Resetear stats e inventario del jugador
 	local leaderstats = player:FindFirstChild("leaderstats")
@@ -697,6 +809,14 @@ restartGameEvent.OnServerEvent:Connect(function(player)
 		if n then
 			n.Value = 0
 		end
+		local f = inventory:FindFirstChild("aether_flare")
+		if f then
+			f.Value = 0
+		end
+		local m = inventory:FindFirstChild("vortex_mine")
+		if m then
+			m.Value = 0
+		end
 		local sp = inventory:FindFirstChild("speed_bonus")
 		if sp then
 			sp.Value = 0
@@ -704,6 +824,14 @@ restartGameEvent.OnServerEvent:Connect(function(player)
 		local hp = inventory:FindFirstChild("max_hp_bonus")
 		if hp then
 			hp.Value = 0
+		end
+		local mg = inventory:FindFirstChild("magnet_bonus")
+		if mg then
+			mg.Value = 0
+		end
+		local ar = inventory:FindFirstChild("area_bonus")
+		if ar then
+			ar.Value = 0
 		end
 	end
 	-- 6. Restaurar personaje
@@ -906,6 +1034,8 @@ function createEnemyInstance(config, index)
 	enemy:SetAttribute("Damage", config.damage)
 	enemy:SetAttribute("XpReward", config.xpValue)
 	enemy:SetAttribute("Behavior", config.behavior)
+	enemy:SetAttribute("IsBoss", config.isBoss == true)
+	enemy:SetAttribute("EnemyName", config.name)
 	enemy:SetAttribute("InKnockback", false)
 	enemy:SetAttribute("IsDead", false)
 	enemy:SetAttribute("LastShotTime", 0)
@@ -956,13 +1086,30 @@ task.spawn(function()
 			continue
 		end
 		gameElapsedTime += 1.5
-		-- BOSS EVENT: Minuto 3 (180 segundos)
-		if gameElapsedTime >= 180 and not bossSpawned then
+		-- BOSS EVENT 1: Minuto 3 (180 segundos) - Coloso de Obsidiana
+		if gameElapsedTime >= 180 and not boss1Spawned then
+			boss1Spawned = true
 			bossSpawned = true
-			print("[BOSS EVENT] ¡El Señor del Vacío ha despertado!")
-			bossAlertEvent:FireAllClients("¡SEÑOR DEL VACÍO HA DESPERTADO!")
-			local bossPart = createEnemyInstance(ENEMY_TYPES.overlord_boss, 999)
+			print("[BOSS EVENT] ¡El Coloso de Obsidiana ha despertado!")
+			bossAlertEvent:FireAllClients("¡COLOSO DE OBSIDIANA HA DESPERTADO!")
+			local bossPart = createEnemyInstance(ENEMY_TYPES.obsidian_colossus or ENEMY_TYPES.overlord_boss, 991)
 			bossPart.Position = Vector3.new(0, 4.5, 60)
+		end
+		-- BOSS EVENT 2: Minuto 6 (360 segundos) - Cosechador del Vacío
+		if gameElapsedTime >= 360 and not boss2Spawned then
+			boss2Spawned = true
+			print("[BOSS EVENT] ¡El Cosechador del Vacío se materializa!")
+			bossAlertEvent:FireAllClients("¡COSECHADOR DEL VACÍO SE MATERIALIZA!")
+			local bossPart = createEnemyInstance(ENEMY_TYPES.void_harvester, 992)
+			bossPart.Position = Vector3.new(50, 4.5, 0)
+		end
+		-- BOSS EVENT 3: Minuto 9 (540 segundos) - Soberano del Éter
+		if gameElapsedTime >= 540 and not boss3Spawned then
+			boss3Spawned = true
+			print("[BOSS EVENT] ¡El Soberano del Éter desciende sobre la arena!")
+			bossAlertEvent:FireAllClients("¡SOBERANO DEL ÉTER DESCIENDE!")
+			local bossPart = createEnemyInstance(ENEMY_TYPES.aether_sovereign, 993)
+			bossPart.Position = Vector3.new(0, 4.5, -60)
 		end
 		local currentCount = #enemiesFolder:GetChildren()
 		local maxCapacity = math.min(50, 20 + math.floor(gameElapsedTime / 20) * 5)
