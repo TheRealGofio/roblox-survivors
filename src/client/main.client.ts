@@ -1405,7 +1405,8 @@ function fireBoomerang(startPos: Vector3, targetPos: Vector3, damage: number, sp
 								if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
 							}
 
-							const knockbackDir = enemy.Position.sub(blade.Position).Unit;
+							const rawKb = enemy.Position.sub(blade.Position);
+							const knockbackDir = new Vector3(rawKb.X, 0, rawKb.Z).Unit;
 							damageEvent?.FireServer(enemy, damage, knockbackDir);
 							VisualEffects.showDamagePopup(enemy.Position, damage);
 							VisualEffects.flashEnemy(enemy);
@@ -1515,7 +1516,8 @@ function firePlasmaOrb(startPos: Vector3, targetEnemy: BasePart, damage: number,
 				const net = Workspace.FindFirstChild("Network") as Folder;
 				if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
 			}
-			damageEvent?.FireServer(targetEnemy, damage, dir);
+			const horizDir = new Vector3(dir.X, 0, dir.Z).Unit;
+			damageEvent?.FireServer(targetEnemy, damage, horizDir);
 			VisualEffects.showDamagePopup(targetEnemy.Position, damage, true);
 			VisualEffects.flashEnemy(targetEnemy);
 
@@ -1611,7 +1613,8 @@ RunService.Heartbeat.Connect((dt) => {
 
 							const dmgMultiplier = activePlatformBuff === "damage" ? 1.5 : 1.0;
 							const finalOrbDmg = math.floor(orbitDef.damage * dmgMultiplier);
-							const knockbackDir = enemy.Position.sub(hrp.Position).Unit;
+							const rawKb = enemy.Position.sub(hrp.Position);
+							const knockbackDir = new Vector3(rawKb.X, 0, rawKb.Z).Unit;
 							damageEvent?.FireServer(enemy, finalOrbDmg, knockbackDir);
 							VisualEffects.showDamagePopup(enemy.Position, finalOrbDmg, true);
 							VisualEffects.flashEnemy(enemy);
@@ -1720,7 +1723,8 @@ function fireNovaBeam(startPos: Vector3, targetPos: Vector3, damage: number, max
 							const net = Workspace.FindFirstChild("Network") as Folder;
 							if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
 						}
-						damageEvent?.FireServer(enemy, damage, dir);
+						const horizDir = new Vector3(dir.X, 0, dir.Z).Unit;
+						damageEvent?.FireServer(enemy, damage, horizDir);
 						VisualEffects.showDamagePopup(enemy.Position, damage, true);
 						VisualEffects.flashEnemy(enemy);
 
@@ -1871,7 +1875,8 @@ function fireAetherFlare(centerPos: Vector3, radius: number, damage: number) {
 						const net = Workspace.FindFirstChild("Network") as Folder;
 						if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
 					}
-					const knockbackDir = enemy.Position.sub(centerPos).Unit;
+					const rawKb = enemy.Position.sub(centerPos);
+					const knockbackDir = new Vector3(rawKb.X, 0, rawKb.Z).Unit;
 					damageEvent?.FireServer(enemy, damage, knockbackDir);
 					VisualEffects.showDamagePopup(enemy.Position, damage, true);
 					VisualEffects.flashEnemy(enemy);
@@ -2052,8 +2057,9 @@ function detonateVortexMine(position: Vector3, radius: number, damage: number) {
 						if (net) damageEvent = net.FindFirstChild("DamageEnemy") as RemoteEvent;
 					}
 
-					// Knockback dir hacia el centro (efecto vórtice / succión gravitatoria)
-					const pullDir = position.sub(enemy.Position).Unit;
+					// Knockback dir hacia el centro (efecto vórtice / succión gravitatoria puramente horizontal)
+					const rawPull = position.sub(enemy.Position);
+					const pullDir = new Vector3(rawPull.X, 0, rawPull.Z).Unit;
 					damageEvent?.FireServer(enemy, damage, pullDir.mul(1.2));
 					VisualEffects.showDamagePopup(enemy.Position, damage, true);
 					VisualEffects.flashEnemy(enemy);

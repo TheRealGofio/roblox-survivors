@@ -8,7 +8,7 @@ local ENEMY_TYPES = {
 		speed = 8.5,
 		damage = 10,
 		xpValue = 10,
-		size = Vector3.new(2.0, 2.6, 2.0),
+		size = Vector3.new(3.2, 4.3, 3.2),
 		color = Color3.new(0.29, 0.59, 0.29),
 		material = Enum.Material.SmoothPlastic,
 	},

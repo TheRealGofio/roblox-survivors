@@ -249,15 +249,16 @@ damageEnemyEvent.OnServerEvent:Connect(function(player, enemyArg, damageArg, kno
 				local knockbackForce = if isBoss then 0 elseif isTank then 5 else 18
 				if bodyVel and knockbackForce > 0 then
 					local massMult = math.max(1, enemy:GetMass())
-					bodyVel.MaxForce = Vector3.new(massMult * 12000, massMult * 10000, massMult * 12000)
-					local _exp = knockbackDir * knockbackForce
-					local _vector3 = Vector3.new(0, if isTank then 1 else 4, 0)
-					bodyVel.Velocity = _exp + _vector3
+					-- MaxForce.Y se mantiene alto para bloquear rígidamente la altura sobre el suelo y evitar que caiga
+					bodyVel.MaxForce = Vector3.new(massMult * 25000, massMult * 100000, massMult * 25000)
+					-- Knockback estrictamente horizontal en el plano XZ (cero componente vertical negativa)
+					local horizDir = Vector3.new(knockbackDir.X, 0, knockbackDir.Z).Unit
+					bodyVel.Velocity = horizDir * knockbackForce
 					enemy:SetAttribute("InKnockback", true)
 					task.delay(0.22, function()
 						if enemy and enemy.Parent and enemy:GetAttribute("IsDead") ~= true then
 							enemy:SetAttribute("InKnockback", false)
-							bodyVel.MaxForce = Vector3.new(massMult * 10000, massMult * 30000, massMult * 10000)
+							bodyVel.MaxForce = Vector3.new(massMult * 25000, massMult * 100000, massMult * 25000)
 						end
 					end)
 				end
@@ -1039,6 +1040,10 @@ local function createEnemyVisual(enemy, config)
 		if template then
 			local visual = template:Clone()
 			visual.Name = "VisualModel"
+			-- Escalar a un tamaño imponente y bien visible (1.9x del tamaño original mini-TDS)
+			if visual:GetExtentsSize().Y < 3.0 then
+				visual:ScaleTo(1.9)
+			end
 			for _, desc in visual:GetDescendants() do
 				if desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") then
 					desc:Destroy()
@@ -1249,9 +1254,6 @@ RunService.Heartbeat:Connect(function()
 		if _condition then
 			continue
 		end
-		if enemy:GetAttribute("InKnockback") == true then
-			continue
-		end
 		local bodyVel = enemy:FindFirstChildOfClass("BodyVelocity")
 		if not bodyVel then
 			continue
@@ -1262,6 +1264,16 @@ RunService.Heartbeat:Connect(function()
 			_condition_1 = 8.0
 		end
 		local baseSpeed = _condition_1
+		-- Salvaguarda antientierro activa para todos los enemigos (incluso durante knockback)
+		local isFlying = behavior == "fast" or (string.find(enemy.Name, "skimmer")) ~= nil
+		local targetGroundY = (enemy.Size.Y / 2 + 0.1) + (if isFlying then 2.5 else 0)
+		if enemy.Position.Y < targetGroundY - 0.2 then
+			enemy.Position = Vector3.new(enemy.Position.X, targetGroundY, enemy.Position.Z)
+			bodyVel.Velocity = Vector3.new(bodyVel.Velocity.X, 0, bodyVel.Velocity.Z)
+		end
+		if enemy:GetAttribute("InKnockback") == true then
+			continue
+		end
 		local closestDist = 99999
 		local targetPos = nil
 		for _1, p in allPlayers do

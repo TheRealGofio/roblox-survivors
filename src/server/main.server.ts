@@ -257,13 +257,16 @@ damageEnemyEvent.OnServerEvent.Connect((player, enemyArg, damageArg, knockbackDi
 				const knockbackForce = isBoss ? 0 : isTank ? 5 : 18;
 				if (bodyVel && knockbackForce > 0) {
 					const massMult = math.max(1, enemy.GetMass());
-					bodyVel.MaxForce = new Vector3(massMult * 12000, massMult * 10000, massMult * 12000);
-					bodyVel.Velocity = knockbackDir.mul(knockbackForce).add(new Vector3(0, isTank ? 1 : 4, 0));
+					// MaxForce.Y se mantiene alto para bloquear rígidamente la altura sobre el suelo y evitar que caiga
+					bodyVel.MaxForce = new Vector3(massMult * 25000, massMult * 100000, massMult * 25000);
+					// Knockback estrictamente horizontal en el plano XZ (cero componente vertical negativa)
+					const horizDir = new Vector3(knockbackDir.X, 0, knockbackDir.Z).Unit;
+					bodyVel.Velocity = horizDir.mul(knockbackForce);
 					enemy.SetAttribute("InKnockback", true);
 					task.delay(0.22, () => {
 						if (enemy && enemy.Parent && enemy.GetAttribute("IsDead") !== true) {
 							enemy.SetAttribute("InKnockback", false);
-							bodyVel.MaxForce = new Vector3(massMult * 10000, massMult * 30000, massMult * 10000);
+							bodyVel.MaxForce = new Vector3(massMult * 25000, massMult * 100000, massMult * 25000);
 						}
 					});
 				}
@@ -903,6 +906,11 @@ function createEnemyVisual(enemy: BasePart, config: EnemyTypeConfig): Model {
 			const visual = template.Clone();
 			visual.Name = "VisualModel";
 
+			// Escalar a un tamaño imponente y bien visible (1.9x del tamaño original mini-TDS)
+			if (visual.GetExtentsSize().Y < 3.0) {
+				visual.ScaleTo(1.9);
+			}
+
 			for (const desc of visual.GetDescendants()) {
 				if (desc.IsA("AlignPosition") || desc.IsA("AlignOrientation")) {
 					desc.Destroy();
@@ -1119,13 +1127,22 @@ RunService.Heartbeat.Connect(() => {
 	for (const enemy of enemiesFolder.GetChildren()) {
 		if (!enemy.IsA("BasePart")) continue;
 		if (enemy.GetAttribute("IsDead") === true || (enemy.GetAttribute("HP") as number ?? 0) <= 0) continue;
-		if (enemy.GetAttribute("InKnockback") === true) continue;
 
 		const bodyVel = enemy.FindFirstChildOfClass("BodyVelocity");
 		if (!bodyVel) continue;
 
 		const behavior = enemy.GetAttribute("Behavior") as string;
 		const baseSpeed = (enemy.GetAttribute("Speed") as number) ?? 8.0;
+
+		// Salvaguarda antientierro activa para todos los enemigos (incluso durante knockback)
+		const isFlying = behavior === "fast" || enemy.Name.find("skimmer")[0] !== undefined;
+		const targetGroundY = (enemy.Size.Y / 2 + 0.1) + (isFlying ? 2.5 : 0);
+		if (enemy.Position.Y < targetGroundY - 0.2) {
+			enemy.Position = new Vector3(enemy.Position.X, targetGroundY, enemy.Position.Z);
+			bodyVel.Velocity = new Vector3(bodyVel.Velocity.X, 0, bodyVel.Velocity.Z);
+		}
+
+		if (enemy.GetAttribute("InKnockback") === true) continue;
 
 		let closestDist = 99999;
 		let targetPos: Vector3 | undefined = undefined;

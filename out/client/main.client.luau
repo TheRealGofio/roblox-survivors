@@ -1637,7 +1637,8 @@ function fireBoomerang(startPos, targetPos, damage, speed, angleOffset)
 							end
 							local _position_2 = enemy.Position
 							local _position_3 = blade.Position
-							local knockbackDir = (_position_2 - _position_3).Unit
+							local rawKb = _position_2 - _position_3
+							local knockbackDir = Vector3.new(rawKb.X, 0, rawKb.Z).Unit
 							local _result_1 = damageEvent
 							if _result_1 ~= nil then
 								_result_1:FireServer(enemy, damage, knockbackDir)
@@ -1782,9 +1783,10 @@ function firePlasmaOrb(startPos, targetEnemy, damage, speed)
 					damageEvent = net:FindFirstChild("DamageEnemy")
 				end
 			end
+			local horizDir = Vector3.new(dir.X, 0, dir.Z).Unit
 			local _result = damageEvent
 			if _result ~= nil then
-				_result:FireServer(targetEnemy, damage, dir)
+				_result:FireServer(targetEnemy, damage, horizDir)
 			end
 			VisualEffects.showDamagePopup(targetEnemy.Position, damage, true)
 			VisualEffects.flashEnemy(targetEnemy)
@@ -1913,7 +1915,8 @@ RunService.Heartbeat:Connect(function(dt)
 							local finalOrbDmg = math.floor(orbitDef.damage * dmgMultiplier)
 							local _position_3 = enemy.Position
 							local _position_4 = hrp.Position
-							local knockbackDir = (_position_3 - _position_4).Unit
+							local rawKb = _position_3 - _position_4
+							local knockbackDir = Vector3.new(rawKb.X, 0, rawKb.Z).Unit
 							local _result_3 = damageEvent
 							if _result_3 ~= nil then
 								_result_3:FireServer(enemy, finalOrbDmg, knockbackDir)
@@ -2077,9 +2080,10 @@ function fireNovaBeam(startPos, targetPos, damage, maxRange, duration, beamScale
 								damageEvent = net:FindFirstChild("DamageEnemy")
 							end
 						end
+						local horizDir = Vector3.new(dir.X, 0, dir.Z).Unit
 						local _result = damageEvent
 						if _result ~= nil then
-							_result:FireServer(enemy, damage, dir)
+							_result:FireServer(enemy, damage, horizDir)
 						end
 						VisualEffects.showDamagePopup(enemy.Position, damage, true)
 						VisualEffects.flashEnemy(enemy)
@@ -2292,7 +2296,8 @@ function fireAetherFlare(centerPos, radius, damage)
 					end
 					local _position_1 = enemy.Position
 					local _centerPos_1 = centerPos
-					local knockbackDir = (_position_1 - _centerPos_1).Unit
+					local rawKb = _position_1 - _centerPos_1
+					local knockbackDir = Vector3.new(rawKb.X, 0, rawKb.Z).Unit
 					local _result = damageEvent
 					if _result ~= nil then
 						_result:FireServer(enemy, damage, knockbackDir)
@@ -2529,10 +2534,11 @@ function detonateVortexMine(position, radius, damage)
 							damageEvent = net:FindFirstChild("DamageEnemy")
 						end
 					end
-					-- Knockback dir hacia el centro (efecto vórtice / succión gravitatoria)
+					-- Knockback dir hacia el centro (efecto vórtice / succión gravitatoria puramente horizontal)
 					local _position_2 = position
 					local _position_3 = enemy.Position
-					local pullDir = (_position_2 - _position_3).Unit
+					local rawPull = _position_2 - _position_3
+					local pullDir = Vector3.new(rawPull.X, 0, rawPull.Z).Unit
 					local _result = damageEvent
 					if _result ~= nil then
 						_result:FireServer(enemy, damage, pullDir * 1.2)

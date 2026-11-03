@@ -24,7 +24,7 @@ export const ENEMY_TYPES: Record<string, EnemyTypeConfig> = {
 		speed: 8.5,
 		damage: 10,
 		xpValue: 10,
-		size: new Vector3(2.0, 2.6, 2.0),
+		size: new Vector3(3.2, 4.3, 3.2),
 		color: new Color3(0.29, 0.59, 0.29), // Verde zombie
 		material: Enum.Material.SmoothPlastic,
 	},
