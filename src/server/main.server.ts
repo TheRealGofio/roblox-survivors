@@ -1,6 +1,7 @@
 import { Debris, PhysicsService, Players, ReplicatedStorage, RunService, TweenService, Workspace } from "@rbxts/services";
 import { ENEMY_TYPES, EnemyTypeConfig } from "shared/enemies";
 import { WEAPONS } from "shared/weapons";
+import { TACTICAL_PLATFORMS } from "shared/platforms";
 import { EnvironmentManager } from "./environment";
 
 print("[r-survivors] Servidor inicializado con éxito.");
@@ -730,6 +731,29 @@ restartGameEvent.OnServerEvent.Connect((player) => {
 	const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
 	if (hrp) {
 		hrp.CFrame = new CFrame(0, 3, 0);
+	}
+});
+
+// 9b. Curación autoritativa del servidor en Plataformas Tácticas (Santuario de Salud)
+task.spawn(() => {
+	const healPlat = TACTICAL_PLATFORMS.find((p) => p.buffType === "heal");
+	if (!healPlat) return;
+
+	while (true) {
+		task.wait(1.0);
+		if (isGamePaused) continue;
+
+		for (const player of Players.GetPlayers()) {
+			const char = player.Character;
+			const hrp = char?.FindFirstChild("HumanoidRootPart") as BasePart;
+			const hum = char?.FindFirstChildOfClass("Humanoid");
+			if (hrp && hum && hum.Health > 0 && hum.Health < hum.MaxHealth) {
+				const dist = new Vector2(hrp.Position.X - healPlat.position.X, hrp.Position.Z - healPlat.position.Z).Magnitude;
+				if (dist <= healPlat.radius) {
+					hum.Health = math.min(hum.MaxHealth, hum.Health + 8);
+				}
+			}
+		}
 	}
 });
 

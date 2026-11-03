@@ -8,6 +8,7 @@ local ReplicatedStorage = _services.ReplicatedStorage
 local RunService = _services.RunService
 local Workspace = _services.Workspace
 local ENEMY_TYPES = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "enemies").ENEMY_TYPES
+local TACTICAL_PLATFORMS = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "platforms").TACTICAL_PLATFORMS
 local EnvironmentManager = TS.import(script, game:GetService("ServerScriptService"), "TS", "environment").EnvironmentManager
 print("[r-survivors] Servidor inicializado con éxito.")
 -- Registrar CollisionGroup "Enemies" para que los enemigos no choquen entre sí pero sí con el entorno
@@ -855,6 +856,50 @@ restartGameEvent.OnServerEvent:Connect(function(player)
 	local hrp = _result
 	if hrp then
 		hrp.CFrame = CFrame.new(0, 3, 0)
+	end
+end)
+-- 9b. Curación autoritativa del servidor en Plataformas Tácticas (Santuario de Salud)
+task.spawn(function()
+	-- ▼ ReadonlyArray.find ▼
+	local _callback = function(p)
+		return p.buffType == "heal"
+	end
+	local _result
+	for _i, _v in TACTICAL_PLATFORMS do
+		if _callback(_v, _i - 1, TACTICAL_PLATFORMS) == true then
+			_result = _v
+			break
+		end
+	end
+	-- ▲ ReadonlyArray.find ▲
+	local healPlat = _result
+	if not healPlat then
+		return nil
+	end
+	while true do
+		task.wait(1.0)
+		if isGamePaused then
+			continue
+		end
+		for _, player in Players:GetPlayers() do
+			local char = player.Character
+			local _result_1 = char
+			if _result_1 ~= nil then
+				_result_1 = _result_1:FindFirstChild("HumanoidRootPart")
+			end
+			local hrp = _result_1
+			local _hum = char
+			if _hum ~= nil then
+				_hum = _hum:FindFirstChildOfClass("Humanoid")
+			end
+			local hum = _hum
+			if hrp and hum and hum.Health > 0 and hum.Health < hum.MaxHealth then
+				local dist = Vector2.new(hrp.Position.X - healPlat.position.X, hrp.Position.Z - healPlat.position.Z).Magnitude
+				if dist <= healPlat.radius then
+					hum.Health = math.min(hum.MaxHealth, hum.Health + 8)
+				end
+			end
+		end
 	end
 end)
 -- 10. Función para generar modelos visuales geométricos estilizados (Placeholders cilíndricos de alto rendimiento)

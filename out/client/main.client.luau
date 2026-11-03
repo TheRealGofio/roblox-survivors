@@ -271,7 +271,6 @@ bbCorner.CornerRadius = UDim.new(0, 6)
 bbCorner.Parent = buffBadge
 -- Loop de chequeo de presencia en Plataformas Tácticas
 task.spawn(function()
-	local lastHealTick = 0
 	while true do
 		task.wait(0.2)
 		if isGameOver or isClientPaused then
@@ -304,14 +303,6 @@ task.spawn(function()
 			buffBadge.Text = `⚡ {foundPlat.buffName} ({foundPlat.buffDesc})`
 			buffBadge.TextColor3 = foundPlat.color
 			buffBadge.Visible = true
-			-- Efecto de Curación Continua en Bastión Norte
-			if foundPlat.buffType == "heal" then
-				local now = os.clock()
-				if now - lastHealTick >= 1.0 then
-					lastHealTick = now
-					hum.Health = math.min(hum.MaxHealth, hum.Health + 8)
-				end
-			end
 		else
 			activePlatformBuff = nil
 			buffBadge.Visible = false
@@ -893,7 +884,14 @@ local function connectDeathListener(character)
 				fill.BackgroundColor3 = Color3.new(0.95, 0.2, 0.25)
 			end
 		end
-		hum.HealthChanged:Connect(updateHp)
+		local lastKnownHp = hum.Health
+		hum.HealthChanged:Connect(function(newHp)
+			updateHp()
+			if newHp > lastKnownHp and activePlatformBuff == "heal" then
+				VisualEffects.showHealPopup(hrp.Position, newHp - lastKnownHp)
+			end
+			lastKnownHp = newHp
+		end)
 		hum:GetPropertyChangedSignal("MaxHealth"):Connect(updateHp)
 		updateHp()
 		hum.Died:Connect(function()

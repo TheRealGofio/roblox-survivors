@@ -291,7 +291,6 @@ bbCorner.Parent = buffBadge;
 
 // Loop de chequeo de presencia en Plataformas Tácticas
 task.spawn(() => {
-	let lastHealTick = 0;
 	while (true) {
 		task.wait(0.2);
 		if (isGameOver || isClientPaused) continue;
@@ -316,15 +315,6 @@ task.spawn(() => {
 			buffBadge.Text = `⚡ ${foundPlat.buffName} (${foundPlat.buffDesc})`;
 			buffBadge.TextColor3 = foundPlat.color;
 			buffBadge.Visible = true;
-
-			// Efecto de Curación Continua en Bastión Norte
-			if (foundPlat.buffType === "heal") {
-				const now = os.clock();
-				if (now - lastHealTick >= 1.0) {
-					lastHealTick = now;
-					hum.Health = math.min(hum.MaxHealth, hum.Health + 8);
-				}
-			}
 		} else {
 			activePlatformBuff = undefined;
 			buffBadge.Visible = false;
@@ -856,7 +846,14 @@ function connectDeathListener(character: Model) {
 			}
 		};
 
-		hum.HealthChanged.Connect(updateHp);
+		let lastKnownHp = hum.Health;
+		hum.HealthChanged.Connect((newHp) => {
+			updateHp();
+			if (newHp > lastKnownHp && activePlatformBuff === "heal") {
+				VisualEffects.showHealPopup(hrp.Position, newHp - lastKnownHp);
+			}
+			lastKnownHp = newHp;
+		});
 		hum.GetPropertyChangedSignal("MaxHealth").Connect(updateHp);
 		updateHp();
 

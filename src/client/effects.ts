@@ -37,6 +37,41 @@ export namespace VisualEffects {
 		Debris.AddItem(part, 0.7);
 	}
 
+	export function showHealPopup(position: Vector3, healAmount: number) {
+		const part = new Instance("Part");
+		part.Size = new Vector3(0.1, 0.1, 0.1);
+		part.Transparency = 1;
+		part.CanCollide = false;
+		part.Anchored = true;
+		part.CFrame = new CFrame(position.add(new Vector3((math.random() - 0.5) * 1.0, 2.0, (math.random() - 0.5) * 1.0)));
+		part.Parent = Workspace;
+
+		const billboard = new Instance("BillboardGui");
+		billboard.Size = new UDim2(0, 100, 0, 40);
+		billboard.AlwaysOnTop = true;
+		billboard.Adornee = part;
+		billboard.Parent = part;
+
+		const label = new Instance("TextLabel");
+		label.Size = new UDim2(1, 0, 1, 0);
+		label.BackgroundTransparency = 1;
+		label.Font = Enum.Font.FredokaOne;
+		label.Text = `+${math.round(healAmount)} HP`;
+		label.TextSize = 20;
+		label.TextColor3 = new Color3(0.2, 1.0, 0.4); // Verde sanación
+		label.TextStrokeTransparency = 0;
+		label.TextStrokeColor3 = new Color3(0.05, 0.2, 0.08);
+		label.Parent = billboard;
+
+		const tweenInfo = new TweenInfo(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out);
+		const tween = TweenService.Create(part, tweenInfo, {
+			CFrame: part.CFrame.add(new Vector3(0, 2.8, 0)),
+		});
+		tween.Play();
+
+		Debris.AddItem(part, 0.85);
+	}
+
 	export function flashEnemy(enemy: Instance) {
 		const visualModel = enemy.FindFirstChild("VisualModel") as Model | undefined;
 		if (!visualModel) return;

@@ -160,7 +160,7 @@ do
 			light.Range = plat.radius + 6
 			light.Brightness = 2.5
 			light.Parent = disk
-			-- Pilar central rúnico
+			-- Pilar central rúnico (CanCollide false para no bloquear al jugador en mitad del altar)
 			local pillar = Instance.new("Part")
 			pillar.Name = `{plat.id}_Pillar`
 			pillar.Size = Vector3.new(2.5, 7, 2.5)
@@ -169,7 +169,7 @@ do
 			pillar.Position = _position + _vector3
 			pillar.Material = Enum.Material.Slate
 			pillar.Color = Color3.new(0.15, 0.18, 0.22)
-			pillar.CanCollide = true
+			pillar.CanCollide = false
 			pillar.Anchored = true
 			pillar.Parent = platformsFolder
 			local rune = Instance.new("Part")

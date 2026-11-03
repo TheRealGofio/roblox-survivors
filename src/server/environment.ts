@@ -167,14 +167,14 @@ export namespace EnvironmentManager {
 			light.Brightness = 2.5;
 			light.Parent = disk;
 
-			// Pilar central rúnico
+			// Pilar central rúnico (CanCollide false para no bloquear al jugador en mitad del altar)
 			const pillar = new Instance("Part");
 			pillar.Name = `${plat.id}_Pillar`;
 			pillar.Size = new Vector3(2.5, 7, 2.5);
 			pillar.Position = plat.position.add(new Vector3(0, 3.5, 0));
 			pillar.Material = Enum.Material.Slate;
 			pillar.Color = new Color3(0.15, 0.18, 0.22);
-			pillar.CanCollide = true;
+			pillar.CanCollide = false;
 			pillar.Anchored = true;
 			pillar.Parent = platformsFolder;
 
