@@ -2,14 +2,14 @@
 local ENEMY_TYPES = {
 	crawler = {
 		id = "crawler",
-		name = "Rastrero Chatarrero",
+		name = "Zombie Chatarrero (TDS)",
 		behavior = "melee",
 		hp = 40,
 		speed = 8.5,
 		damage = 10,
 		xpValue = 10,
-		size = Vector3.new(2.8, 3.4, 2.8),
-		color = Color3.new(0.85, 0.2, 0.2),
+		size = Vector3.new(2.0, 2.6, 2.0),
+		color = Color3.new(0.29, 0.59, 0.29),
 		material = Enum.Material.SmoothPlastic,
 	},
 	skimmer = {

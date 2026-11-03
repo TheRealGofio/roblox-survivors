@@ -885,7 +885,78 @@ function createPlaceholderVisual(enemy: BasePart, config: EnemyTypeConfig): Mode
 	return visual;
 }
 
-// 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Cilindros Fluidos
+// 10.5 Función para generar o clonar modelos visuales (TDS Enemy Kit para mobs animados, o Placeholders cilíndricos)
+function createEnemyVisual(enemy: BasePart, config: EnemyTypeConfig): Model {
+	// 1. Si es el crawler (mob básico), usar el modelo TDS Normal Zombie con animación R6 nativa
+	if (config.id === "crawler") {
+		const enemyModels = ReplicatedStorage.FindFirstChild("EnemyModels") as Folder | undefined;
+		let template = enemyModels?.FindFirstChild("crawler") as Model | undefined;
+
+		if (!template) {
+			const tdsKit = Workspace.FindFirstChild("TDS Enemy Kit 2022") as Folder | undefined;
+			const easyMode = tdsKit?.FindFirstChild("Gamemodes")?.FindFirstChild("Easy Mode") as Folder | undefined;
+			const normalEnemy = easyMode?.FindFirstChild("Normal") as Folder | undefined;
+			template = normalEnemy?.FindFirstChild("Model") as Model | undefined;
+		}
+
+		if (template) {
+			const visual = template.Clone();
+			visual.Name = "VisualModel";
+
+			for (const desc of visual.GetDescendants()) {
+				if (desc.IsA("AlignPosition") || desc.IsA("AlignOrientation")) {
+					desc.Destroy();
+				} else if (desc.IsA("BasePart")) {
+					desc.CanCollide = false;
+					desc.Massless = true;
+					desc.Anchored = false;
+				}
+			}
+
+			const hrp = visual.FindFirstChild("HumanoidRootPart") as BasePart | undefined;
+			if (hrp) {
+				visual.PivotTo(enemy.CFrame);
+				const weld = new Instance("WeldConstraint");
+				weld.Part0 = enemy;
+				weld.Part1 = hrp;
+				weld.Parent = hrp;
+			}
+
+			// Iniciar animación R6 nativa de caminata
+			const animCtrl = visual.FindFirstChildOfClass("AnimationController") ?? new Instance("AnimationController", visual);
+			const animator = animCtrl.FindFirstChildOfClass("Animator") ?? new Instance("Animator", animCtrl);
+
+			let animsFolder = visual.FindFirstChild("Animations") as Folder | undefined;
+			if (!animsFolder) {
+				animsFolder = new Instance("Folder");
+				animsFolder.Name = "Animations";
+				animsFolder.Parent = visual;
+			}
+
+			let walkAnim = animsFolder.FindFirstChild("Walk") as Animation | undefined;
+			if (!walkAnim) {
+				walkAnim = new Instance("Animation");
+				walkAnim.Name = "Walk";
+				walkAnim.Parent = animsFolder;
+			}
+			walkAnim.AnimationId = "http://www.roblox.com/asset/?id=180426354";
+
+			const track = animator.LoadAnimation(walkAnim);
+			track.Priority = Enum.AnimationPriority.Movement;
+			track.Looped = true;
+			track.Play();
+			track.AdjustSpeed(config.speed / 8.5);
+
+			visual.Parent = enemy;
+			return visual;
+		}
+	}
+
+	// 2. Para otros tipos de enemigos, mantener los placeholders geométricos optimizados
+	return createPlaceholderVisual(enemy, config);
+}
+
+// 11. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Cilindros Fluidos
 function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	const enemy = new Instance("Part");
 	enemy.Name = `${config.name}_${index}`;
@@ -909,8 +980,8 @@ function createEnemyInstance(config: EnemyTypeConfig, index: number): BasePart {
 	const spawnY = config.size.Y / 2 + 0.1 + floatY;
 	enemy.Position = new Vector3(math.cos(angle) * dist, spawnY, math.sin(angle) * dist);
 
-	// Crear modelo visual cilíndrico estilizado de alto rendimiento
-	createPlaceholderVisual(enemy, config);
+	// Crear modelo visual (TDS Enemy Kit para crawler, o placeholder cilíndrico)
+	createEnemyVisual(enemy, config);
 
 	enemy.SetAttribute("HP", config.hp);
 	enemy.SetAttribute("MaxHP", config.hp);

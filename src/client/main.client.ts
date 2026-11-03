@@ -1188,13 +1188,46 @@ function setupEnemyVisuals(enemy: Instance) {
 	enemy.SetAttribute("VisualSetupDone", true);
 
 	let isDead = false;
+	let animTrack: AnimationTrack | undefined = undefined;
+
+	// Iniciar animación R6 fluida en el cliente para modelos animados (TDS Zombie)
+	task.spawn(() => {
+		const visualModel = enemy.WaitForChild("VisualModel", 2) as Model | undefined;
+		if (!visualModel || isDead) return;
+
+		const animCtrl = visualModel.FindFirstChildOfClass("AnimationController");
+		const animator = animCtrl?.FindFirstChildOfClass("Animator");
+		const walkAnim = visualModel.FindFirstChild("Animations")?.FindFirstChild("Walk") as Animation | undefined;
+
+		if (animator && walkAnim) {
+			animTrack = animator.LoadAnimation(walkAnim);
+			animTrack.Priority = Enum.AnimationPriority.Movement;
+			animTrack.Looped = true;
+			animTrack.Play();
+			const speed = (enemy.GetAttribute("Speed") as number) ?? 8.5;
+			animTrack.AdjustSpeed(speed / 8.5);
+		}
+	});
 
 	const onDeath = () => {
 		if (isDead) return;
 		isDead = true;
 
+		if (animTrack) {
+			animTrack.Stop(0.1);
+		}
+
 		const visualModel = enemy.FindFirstChild("VisualModel") as Model | undefined;
 		if (visualModel) {
+			// Detener animaciones activas en modelos animados
+			const animCtrl = visualModel.FindFirstChildOfClass("AnimationController");
+			const animator = animCtrl?.FindFirstChildOfClass("Animator");
+			if (animator) {
+				for (const t of animator.GetPlayingAnimationTracks()) {
+					t.Stop(0.1);
+				}
+			}
+
 			// Quitar highlight de hit flash si estuviera activo
 			const hl = visualModel.FindFirstChild("HitFlashHighlight");
 			if (hl) hl.Destroy();

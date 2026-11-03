@@ -1329,13 +1329,59 @@ local function setupEnemyVisuals(enemy)
 	end
 	enemy:SetAttribute("VisualSetupDone", true)
 	local isDead = false
+	local animTrack = nil
+	-- Iniciar animación R6 fluida en el cliente para modelos animados (TDS Zombie)
+	task.spawn(function()
+		local visualModel = enemy:WaitForChild("VisualModel", 2)
+		if not visualModel or isDead then
+			return nil
+		end
+		local animCtrl = visualModel:FindFirstChildOfClass("AnimationController")
+		local _animator = animCtrl
+		if _animator ~= nil then
+			_animator = _animator:FindFirstChildOfClass("Animator")
+		end
+		local animator = _animator
+		local _result = visualModel:FindFirstChild("Animations")
+		if _result ~= nil then
+			_result = _result:FindFirstChild("Walk")
+		end
+		local walkAnim = _result
+		if animator and walkAnim then
+			animTrack = animator:LoadAnimation(walkAnim)
+			animTrack.Priority = Enum.AnimationPriority.Movement
+			animTrack.Looped = true
+			animTrack:Play()
+			local _condition = (enemy:GetAttribute("Speed"))
+			if _condition == nil then
+				_condition = 8.5
+			end
+			local speed = _condition
+			animTrack:AdjustSpeed(speed / 8.5)
+		end
+	end)
 	local onDeath = function()
 		if isDead then
 			return nil
 		end
 		isDead = true
+		if animTrack then
+			animTrack:Stop(0.1)
+		end
 		local visualModel = enemy:FindFirstChild("VisualModel")
 		if visualModel then
+			-- Detener animaciones activas en modelos animados
+			local animCtrl = visualModel:FindFirstChildOfClass("AnimationController")
+			local _animator = animCtrl
+			if _animator ~= nil then
+				_animator = _animator:FindFirstChildOfClass("Animator")
+			end
+			local animator = _animator
+			if animator then
+				for _, t in animator:GetPlayingAnimationTracks() do
+					t:Stop(0.1)
+				end
+			end
 			-- Quitar highlight de hit flash si estuviera activo
 			local hl = visualModel:FindFirstChild("HitFlashHighlight")
 			if hl then

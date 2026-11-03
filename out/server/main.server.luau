@@ -4,6 +4,7 @@ local _services = TS.import(script, game:GetService("ReplicatedStorage"), "rbxts
 local Debris = _services.Debris
 local PhysicsService = _services.PhysicsService
 local Players = _services.Players
+local ReplicatedStorage = _services.ReplicatedStorage
 local RunService = _services.RunService
 local Workspace = _services.Workspace
 local ENEMY_TYPES = TS.import(script, game:GetService("ReplicatedStorage"), "TS", "enemies").ENEMY_TYPES
@@ -1004,7 +1005,86 @@ local function createPlaceholderVisual(enemy, config)
 	visual.Parent = enemy
 	return visual
 end
--- 10. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Cilindros Fluidos
+-- 10.5 Función para generar o clonar modelos visuales (TDS Enemy Kit para mobs animados, o Placeholders cilíndricos)
+local function createEnemyVisual(enemy, config)
+	-- 1. Si es el crawler (mob básico), usar el modelo TDS Normal Zombie con animación R6 nativa
+	if config.id == "crawler" then
+		local enemyModels = ReplicatedStorage:FindFirstChild("EnemyModels")
+		local _result = enemyModels
+		if _result ~= nil then
+			_result = _result:FindFirstChild("crawler")
+		end
+		local template = _result
+		if not template then
+			local tdsKit = Workspace:FindFirstChild("TDS Enemy Kit 2022")
+			local _result_1 = tdsKit
+			if _result_1 ~= nil then
+				_result_1 = _result_1:FindFirstChild("Gamemodes")
+				if _result_1 ~= nil then
+					_result_1 = _result_1:FindFirstChild("Easy Mode")
+				end
+			end
+			local easyMode = _result_1
+			local _result_2 = easyMode
+			if _result_2 ~= nil then
+				_result_2 = _result_2:FindFirstChild("Normal")
+			end
+			local normalEnemy = _result_2
+			local _result_3 = normalEnemy
+			if _result_3 ~= nil then
+				_result_3 = _result_3:FindFirstChild("Model")
+			end
+			template = _result_3
+		end
+		if template then
+			local visual = template:Clone()
+			visual.Name = "VisualModel"
+			for _, desc in visual:GetDescendants() do
+				if desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") then
+					desc:Destroy()
+				elseif desc:IsA("BasePart") then
+					desc.CanCollide = false
+					desc.Massless = true
+					desc.Anchored = false
+				end
+			end
+			local hrp = visual:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				visual:PivotTo(enemy.CFrame)
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = enemy
+				weld.Part1 = hrp
+				weld.Parent = hrp
+			end
+			-- Iniciar animación R6 nativa de caminata
+			local animCtrl = visual:FindFirstChildOfClass("AnimationController") or Instance.new("AnimationController", visual)
+			local animator = animCtrl:FindFirstChildOfClass("Animator") or Instance.new("Animator", animCtrl)
+			local animsFolder = visual:FindFirstChild("Animations")
+			if not animsFolder then
+				animsFolder = Instance.new("Folder")
+				animsFolder.Name = "Animations"
+				animsFolder.Parent = visual
+			end
+			local walkAnim = animsFolder:FindFirstChild("Walk")
+			if not walkAnim then
+				walkAnim = Instance.new("Animation")
+				walkAnim.Name = "Walk"
+				walkAnim.Parent = animsFolder
+			end
+			walkAnim.AnimationId = "http://www.roblox.com/asset/?id=180426354"
+			local track = animator:LoadAnimation(walkAnim)
+			track.Priority = Enum.AnimationPriority.Movement
+			track.Looped = true
+			track:Play()
+			track:AdjustSpeed(config.speed / 8.5)
+			visual.Parent = enemy
+			return visual
+		end
+	end
+	-- 2. Para otros tipos de enemigos, mantener los placeholders geométricos optimizados
+	return createPlaceholderVisual(enemy, config)
+end
+-- 11. Función para crear cualquier enemigo de ENEMY_TYPES con soporte de Cilindros Fluidos
 function createEnemyInstance(config, index)
 	local enemy = Instance.new("Part")
 	enemy.Name = `{config.name}_{index}`
@@ -1026,8 +1106,8 @@ function createEnemyInstance(config, index)
 	local floatY = if isFlying then 2.5 else 0
 	local spawnY = config.size.Y / 2 + 0.1 + floatY
 	enemy.Position = Vector3.new(math.cos(angle) * dist, spawnY, math.sin(angle) * dist)
-	-- Crear modelo visual cilíndrico estilizado de alto rendimiento
-	createPlaceholderVisual(enemy, config)
+	-- Crear modelo visual (TDS Enemy Kit para crawler, o placeholder cilíndrico)
+	createEnemyVisual(enemy, config)
 	enemy:SetAttribute("HP", config.hp)
 	enemy:SetAttribute("MaxHP", config.hp)
 	enemy:SetAttribute("Speed", config.speed)
